@@ -1,6 +1,8 @@
 # データキャッシュ・スナップショット (再生成可能なので追跡しない)
 data/cache/
 data/fundamentals/
+data/watchlist.csv
+reports/
 
 # Python
 __pycache__/
