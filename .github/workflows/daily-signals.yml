@@ -1,0 +1,50 @@
+# 日次テクニカル・シグナル判定
+# 平日 08:00 JST (前日 23:00 UTC) に実行。この時刻なら前日の米国市場の終値と
+# 前営業日の日本市場の終値が揃っている。
+# シグナル成立時は Secrets の SLACK_WEBHOOK_URL があれば Slack に通知する。
+name: Daily Signals
+
+on:
+  schedule:
+    - cron: "0 23 * * 0-4"   # UTC日〜木 23:00 = JST月〜金 08:00
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screener-data
+  cancel-in-progress: false
+
+jobs:
+  signals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install .
+
+      - name: Run signal detection
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: stock-screener signals
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+          git add data/watchlist.csv reports/
+          if git diff --cached --quiet; then
+            echo "変更なし: コミットをスキップ"
+          else
+            git commit -m "chore: 日次シグナル判定結果を更新 ($(date +%Y-%m-%d))"
+            git push
+          fi

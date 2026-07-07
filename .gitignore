@@ -1,0 +1,23 @@
+# データキャッシュ・スナップショット (再生成可能なので追跡しない)
+data/cache/
+data/fundamentals/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# ツール
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / エディタ
+.DS_Store
+.idea/
+.vscode/

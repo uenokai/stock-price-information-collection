@@ -1,0 +1,55 @@
+# 銘柄発掘システム 設定ファイル
+# 数値・重みはすべてここで調整できる。詳細は docs/system-design.md を参照。
+
+universe:
+  japan:
+    file: data/universe/japan.csv
+    min_market_cap: 100000000000    # 1,000億円 (JPY)
+  us:
+    file: data/universe/us.csv
+    min_market_cap: 5000000000      # 50億ドル (USD)
+
+screening:
+  # ウォッチリストに残す銘柄数 (合成スコア上位N)
+  watchlist_size: 60
+  # スコア算出に最低限必要な指標数 (欠損が多い銘柄を除外)
+  min_metrics_required: 4
+  # 業種内パーセンタイルを使う最小業種サイズ (未満なら全体パーセンタイルで代用)
+  min_sector_size: 5
+  # 各指標の重み (合計1.0が目安。欠損指標は重みを再配分して吸収する)
+  # pe / pb / debt_to_equity は「低いほど良い」として自動反転される
+  weights:
+    roe: 0.20
+    operating_margin: 0.10
+    revenue_growth: 0.15
+    earnings_growth: 0.10
+    pe: 0.15
+    pb: 0.10
+    dividend_yield: 0.05
+    debt_to_equity: 0.15
+
+signals:
+  # 取得する株価履歴の期間 (52週高値+200日SMAの計算に2年必要)
+  history_period: "2y"
+  # ゴールデンクロス: 直近N営業日以内のクロスを検知
+  golden_cross_lookback: 5
+  # 52週高値ブレイク: 出来高が20日平均のこの倍数以上であること
+  breakout_volume_mult: 1.5
+  # 押し目: 上昇トレンド中 (株価>200日SMA かつ 50日SMA>200日SMA) でRSIがこの範囲
+  pullback_rsi_min: 30
+  pullback_rsi_max: 45
+  # 出来高急増: 20日平均のこの倍数以上 かつ 当日リターンがこの値以上
+  volume_surge_mult: 3.0
+  volume_surge_min_return: 0.02
+
+paths:
+  cache_dir: data/cache
+  fundamentals_dir: data/fundamentals
+  watchlist: data/watchlist.csv
+  reports_dir: reports
+
+fetch:
+  # 財務データ取得時のリクエスト間隔 (秒)。レート制限対策
+  fundamentals_pause: 0.2
+  # 取得失敗時のリトライ回数
+  max_retries: 2

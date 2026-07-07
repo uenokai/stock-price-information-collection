@@ -1,0 +1,116 @@
+ticker,name
+AAPL,Apple
+MSFT,Microsoft
+GOOGL,Alphabet
+AMZN,Amazon
+NVDA,NVIDIA
+META,Meta Platforms
+TSLA,Tesla
+BRK-B,Berkshire Hathaway
+JPM,JPMorgan Chase
+V,Visa
+MA,Mastercard
+UNH,UnitedHealth Group
+JNJ,Johnson & Johnson
+XOM,Exxon Mobil
+PG,Procter & Gamble
+HD,Home Depot
+CVX,Chevron
+MRK,Merck
+ABBV,AbbVie
+PEP,PepsiCo
+KO,Coca-Cola
+AVGO,Broadcom
+COST,Costco
+WMT,Walmart
+MCD,McDonald's
+CSCO,Cisco Systems
+CRM,Salesforce
+ACN,Accenture
+ADBE,Adobe
+AMD,Advanced Micro Devices
+BAC,Bank of America
+DIS,Walt Disney
+INTC,Intel
+INTU,Intuit
+LIN,Linde
+LLY,Eli Lilly
+NFLX,Netflix
+NKE,Nike
+ORCL,Oracle
+PFE,Pfizer
+PM,Philip Morris International
+QCOM,Qualcomm
+TMO,Thermo Fisher Scientific
+TXN,Texas Instruments
+UNP,Union Pacific
+UPS,United Parcel Service
+VZ,Verizon
+WFC,Wells Fargo
+ABT,Abbott Laboratories
+AMGN,Amgen
+AXP,American Express
+BA,Boeing
+BKNG,Booking Holdings
+BLK,BlackRock
+BMY,Bristol-Myers Squibb
+C,Citigroup
+CAT,Caterpillar
+CL,Colgate-Palmolive
+CMCSA,Comcast
+COP,ConocoPhillips
+DE,Deere
+DHR,Danaher
+DUK,Duke Energy
+EMR,Emerson Electric
+FDX,FedEx
+GD,General Dynamics
+GE,GE Aerospace
+GILD,Gilead Sciences
+GM,General Motors
+GS,Goldman Sachs
+HON,Honeywell
+IBM,IBM
+ISRG,Intuitive Surgical
+LMT,Lockheed Martin
+LOW,Lowe's
+MDT,Medtronic
+MMM,3M
+MO,Altria
+MS,Morgan Stanley
+NEE,NextEra Energy
+NOW,ServiceNow
+PANW,Palo Alto Networks
+PYPL,PayPal
+RTX,RTX
+SBUX,Starbucks
+SCHW,Charles Schwab
+SO,Southern Company
+T,AT&T
+TGT,Target
+TJX,TJX Companies
+TMUS,T-Mobile US
+USB,U.S. Bancorp
+MU,Micron Technology
+AMAT,Applied Materials
+ADI,Analog Devices
+KLAC,KLA
+LRCX,Lam Research
+SNPS,Synopsys
+CDNS,Cadence Design Systems
+REGN,Regeneron Pharmaceuticals
+VRTX,Vertex Pharmaceuticals
+SYK,Stryker
+ELV,Elevance Health
+CB,Chubb
+PGR,Progressive
+SPGI,S&P Global
+CME,CME Group
+ICE,Intercontinental Exchange
+ETN,Eaton
+FCX,Freeport-McMoRan
+EOG,EOG Resources
+SLB,SLB
+ANET,Arista Networks
+UBER,Uber Technologies
+ABNB,Airbnb

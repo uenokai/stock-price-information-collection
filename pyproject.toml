@@ -1,0 +1,28 @@
+[project]
+name = "stock-screener"
+version = "0.1.0"
+description = "中長期投資向けの銘柄発掘システム: ファンダメンタルで絞り込み、テクニカルで買いタイミングを検知する"
+requires-python = ">=3.10"
+dependencies = [
+    "yfinance>=0.2.40",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyarrow>=14.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+stock-screener = "stock_screener.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
