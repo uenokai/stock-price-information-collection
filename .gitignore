@@ -1,8 +1,7 @@
 # データキャッシュ・スナップショット (再生成可能なので追跡しない)
+# 注: data/watchlist.csv と reports/ は GitHub Actions が結果をコミットするため追跡する
 data/cache/
 data/fundamentals/
-data/watchlist.csv
-reports/
 
 # Python
 __pycache__/
