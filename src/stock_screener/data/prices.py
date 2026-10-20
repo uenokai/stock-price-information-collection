@@ -16,7 +16,6 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-CACHE_FILENAME = "prices.parquet"
 _PRICE_COLUMNS = ["open", "high", "low", "close", "volume"]
 
 
@@ -34,7 +33,7 @@ def fetch_price_history(
     """
     tickers = list(dict.fromkeys(tickers))  # 順序を保って重複除去
 
-    cached = _load_cache(tickers, cache_dir, max_age_hours)
+    cached = _load_cache(tickers, cache_dir, period, max_age_hours)
     if cached is not None:
         return cached
 
@@ -54,7 +53,7 @@ def fetch_price_history(
     if failed:
         logger.warning("%d 銘柄の株価取得に失敗しました", failed)
     if result and cache_dir is not None:
-        _save_cache(result, cache_dir)
+        _save_cache(result, cache_dir, period)
     return result
 
 
@@ -82,16 +81,17 @@ def _split_by_ticker(raw: pd.DataFrame, tickers: list[str]) -> dict[str, pd.Data
     return result
 
 
-def _cache_path(cache_dir: str | Path) -> Path:
-    return Path(cache_dir) / CACHE_FILENAME
+def _cache_path(cache_dir: str | Path, period: str) -> Path:
+    # 期間ごとに別ファイル (日次判定の 2y とバックテストの 5y が混ざらないように)
+    return Path(cache_dir) / f"prices_{period}.parquet"
 
 
 def _load_cache(
-    tickers: list[str], cache_dir: str | Path | None, max_age_hours: float
+    tickers: list[str], cache_dir: str | Path | None, period: str, max_age_hours: float
 ) -> dict[str, pd.DataFrame] | None:
     if cache_dir is None:
         return None
-    path = _cache_path(cache_dir)
+    path = _cache_path(cache_dir, period)
     if not path.exists():
         return None
     age_hours = (time.time() - path.stat().st_mtime) / 3600
@@ -111,8 +111,8 @@ def _load_cache(
     return result
 
 
-def _save_cache(result: dict[str, pd.DataFrame], cache_dir: str | Path) -> None:
-    path = _cache_path(cache_dir)
+def _save_cache(result: dict[str, pd.DataFrame], cache_dir: str | Path, period: str) -> None:
+    path = _cache_path(cache_dir, period)
     path.parent.mkdir(parents=True, exist_ok=True)
     frames = []
     for ticker, df in result.items():

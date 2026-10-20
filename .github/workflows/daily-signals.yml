@@ -1,7 +1,8 @@
 # 日次テクニカル・シグナル判定
 # 平日 08:00 JST (前日 23:00 UTC) に実行。この時刻なら前日の米国市場の終値と
 # 前営業日の日本市場の終値が揃っている。
-# シグナル成立時は Secrets の SLACK_WEBHOOK_URL があれば Slack に通知する。
+# 成立したシグナルは data/signal_log.csv に記録し、過去シグナルの成績 (reports/performance.md)
+# も毎回更新する。新規シグナルがあれば Secrets の SLACK_WEBHOOK_URL があれば Slack に通知する。
 name: Daily Signals
 
 on:
@@ -21,9 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -40,11 +41,28 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
-          git add data/watchlist.csv reports/
+          # 先にコミットしてから pull --rebase する (未コミットの変更があると rebase が失敗するため)
+          git add data reports
           if git diff --cached --quiet; then
             echo "変更なし: コミットをスキップ"
-          else
-            git commit -m "chore: 日次シグナル判定結果を更新 ($(date +%Y-%m-%d))"
-            git push
+            exit 0
           fi
+          git commit -m "chore: 日次シグナル判定結果を更新 ($(date +%Y-%m-%d))"
+          for attempt in 1 2 3; do
+            if git pull --rebase && git push; then
+              exit 0
+            fi
+            echo "push 失敗 (試行 $attempt)。5秒後に再試行"
+            sleep 5
+          done
+          exit 1
+
+      - name: Notify failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$SLACK_WEBHOOK_URL" ] && { echo "SLACK_WEBHOOK_URL 未設定のため通知スキップ"; exit 0; }
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\": \":x: Daily Signals が失敗しました: $RUN_URL\"}" "$SLACK_WEBHOOK_URL"

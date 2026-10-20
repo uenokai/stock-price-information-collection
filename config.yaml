@@ -41,11 +41,25 @@ signals:
   # 出来高急増: 20日平均のこの倍数以上 かつ 当日リターンがこの値以上
   volume_surge_mult: 3.0
   volume_surge_min_return: 0.02
+  # 「新規」シグナルの定義: 同じ銘柄・同じシグナルが直前この営業日数の間に成立していなかった
+  # (押し目のように連日成立するシグナルの重複通知を防ぎ、成績集計で1回と数えるため)
+  renotify_after_days: 10
+  # Slack通知を新規シグナルだけにする (false なら継続中も毎日通知)
+  notify_only_new: true
+
+tracking:
+  # シグナル成立後の成績を測る期間 (営業日)。performance.md と backtest.md の列になる
+  horizons: [20, 60, 120]
+
+backtest:
+  # バックテストで使う株価履歴の期間
+  history_period: "5y"
 
 paths:
   cache_dir: data/cache
   fundamentals_dir: data/fundamentals
   watchlist: data/watchlist.csv
+  signal_log: data/signal_log.csv
   reports_dir: reports
 
 fetch:
