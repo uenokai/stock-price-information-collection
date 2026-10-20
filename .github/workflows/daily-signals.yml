@@ -2,7 +2,9 @@
 # 平日 08:00 JST (前日 23:00 UTC) に実行。この時刻なら前日の米国市場の終値と
 # 前営業日の日本市場の終値が揃っている。
 # 成立したシグナルは data/signal_log.csv に記録し、過去シグナルの成績 (reports/performance.md)
-# も毎回更新する。新規シグナルがあれば Secrets の SLACK_WEBHOOK_URL があれば Slack に通知する。
+# も毎回更新する。続けてモデルポートフォリオ (ペーパー運用) を評価し、月初なら入れ替える
+# (data/model_portfolio/ と reports/model-portfolio.md)。
+# 通知は SLACK_WEBHOOK_URL が設定されている場合のみ (現在は未設定 = 通知なし)。
 name: Daily Signals
 
 on:
@@ -36,6 +38,9 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: stock-screener signals
+
+      - name: Update model portfolio (paper trading)
+        run: stock-screener model-portfolio
 
       - name: Commit results
         run: |

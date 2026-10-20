@@ -4,6 +4,7 @@
 - `stock-screener signals`  : 日次テクニカル・シグナル判定 → 台帳記録 + 成績更新 + レポート + 通知
 - `stock-screener backtest` : シグナルルールの過去検証 → reports/backtest.md
 - `stock-screener portfolio`: 毎月上位N銘柄を保有した場合 vs 指数ETF → reports/portfolio-backtest.md
+- `stock-screener model-portfolio`: ペーパー運用の評価・月次入れ替え → reports/model-portfolio.md
 """
 
 from __future__ import annotations
@@ -20,6 +21,13 @@ from .backtest import run_backtest as _run_backtest
 from .config import load_config
 from .data.fundamentals import fetch_fundamentals
 from .data.prices import fetch_price_history
+from .model_portfolio import (
+    STRATEGIES,
+    load_state,
+    run_model_portfolio as _run_model_portfolio,
+    save_state,
+    select_targets,
+)
 from .notify import send_slack
 from .portfolio import latest_momentum
 from .portfolio import run_portfolio_backtest as _run_portfolio_backtest
@@ -27,6 +35,7 @@ from .report import (
     build_slack_message,
     now_jst,
     write_backtest_report,
+    write_model_portfolio_report,
     write_performance_report,
     write_portfolio_report,
     write_signals_report,
@@ -214,6 +223,60 @@ def run_portfolio(config: dict[str, Any], period: str | None = None) -> dict[str
     return results
 
 
+def run_model_portfolio(config: dict[str, Any], force_rebalance: bool = False) -> dict[str, Any]:
+    """ペーパー運用: 戦略ごとの保有を評価し、月が変わっていれば入れ替える。"""
+    paths = config["paths"]
+    pf_cfg = config.get("portfolio", {})
+    top_n = int(pf_cfg.get("top_n_per_market", 15))
+    cost_rate = float(pf_cfg.get("cost_rate", 0.002))
+    bench_tickers = list(dict(pf_cfg.get("benchmarks", {})).values())
+    state_dir = paths.get("model_portfolio_dir", "data/model_portfolio")
+    date = f"{now_jst():%Y-%m-%d}"
+
+    universe = load_universe(config)
+    state = load_state(state_dir)
+    held = state["holdings"]["ticker"].tolist() if not state["holdings"].empty else []
+    tickers = list(dict.fromkeys(universe["ticker"].tolist() + held + bench_tickers))
+    prices = fetch_price_history(tickers, period=str(config["signals"].get("history_period", "2y")),
+                                 cache_dir=paths.get("cache_dir"))
+
+    # モメンタム戦略の候補: ユニバース全体 (時価総額フィルタは最新の財務スナップショットで)
+    momentum = latest_momentum(prices, int(pf_cfg.get("momentum_lookback", 252)),
+                               int(pf_cfg.get("momentum_skip", 21)))
+    cand = universe.merge(momentum.rename_axis("ticker").reset_index(), on="ticker", how="left")
+    snapshot = _latest_fundamentals_snapshot(paths.get("fundamentals_dir"))
+    if snapshot is not None and "market_cap" in snapshot.columns:
+        cand = cand.merge(snapshot[["ticker", "market_cap"]], on="ticker", how="left")
+        cand = apply_market_cap_filter(cand)
+    targets = {"momentum": select_targets(cand, STRATEGIES["momentum"]["rank_col"], top_n)}
+
+    # 合成スコア戦略の候補: ウォッチリスト
+    watchlist_path = Path(paths["watchlist"])
+    if watchlist_path.exists():
+        wl = pd.read_csv(watchlist_path)
+        targets["composite"] = select_targets(wl, STRATEGIES["composite"]["rank_col"], top_n)
+    else:
+        logger.warning("ウォッチリストが無いため合成スコア戦略は見送ります")
+        targets["composite"] = pd.DataFrame(columns=["ticker", "name", "market", "score"])
+
+    state, summary = _run_model_portfolio(state, targets, prices, bench_tickers, date,
+                                          cost_rate, force_rebalance=force_rebalance)
+    save_state(state_dir, state)
+    report_path = Path(paths["reports_dir"]) / "model-portfolio.md"
+    write_model_portfolio_report(summary, report_path, date, STRATEGIES, top_n, bench_tickers, cost_rate)
+    logger.info("モデルポートフォリオを更新しました: %s", report_path)
+    return summary
+
+
+def _latest_fundamentals_snapshot(snapshot_dir: str | None) -> pd.DataFrame | None:
+    if not snapshot_dir:
+        return None
+    files = sorted(Path(snapshot_dir).glob("*.csv"))
+    if not files:
+        return None
+    return pd.read_csv(files[-1], dtype={"ticker": str})
+
+
 def _horizons(config: dict[str, Any]) -> list[int]:
     raw = config.get("tracking", {}).get("horizons", DEFAULT_HORIZONS)
     return [int(h) for h in raw]
@@ -267,6 +330,12 @@ def main(argv: list[str] | None = None) -> int:
     p_pf.add_argument("--period", default=None,
                       help="株価履歴の期間 (既定は config の portfolio.history_period)")
 
+    p_mp = subparsers.add_parser(
+        "model-portfolio",
+        help="ペーパー運用: 戦略ごとの保有を評価し月初に入れ替え → reports/model-portfolio.md (日次)",
+    )
+    p_mp.add_argument("--rebalance", action="store_true", help="月が変わっていなくても入れ替える")
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -285,6 +354,8 @@ def main(argv: list[str] | None = None) -> int:
         run_backtest(config, period=args.period, universe=args.universe, limit=args.limit)
     elif args.command == "portfolio":
         run_portfolio(config, period=args.period)
+    elif args.command == "model-portfolio":
+        run_model_portfolio(config, force_rebalance=args.rebalance)
     return 0
 
 

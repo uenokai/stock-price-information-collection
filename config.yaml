@@ -59,7 +59,8 @@ backtest:
   history_period: "5y"
 
 portfolio:
-  # ポートフォリオ・バックテスト (毎月上位N銘柄を等金額保有 vs 指数ETF) の設定
+  # ポートフォリオ・バックテストとモデルポートフォリオ (ペーパー運用) 共通の設定
+  # バックテストで使う株価履歴の期間
   history_period: "10y"
   # 市場ごとの保有銘柄数
   top_n_per_market: 15
@@ -82,6 +83,8 @@ paths:
   fundamentals_dir: data/fundamentals
   watchlist: data/watchlist.csv
   signal_log: data/signal_log.csv
+  # モデルポートフォリオ (ペーパー運用) の状態 (holdings / trades / nav の CSV)
+  model_portfolio_dir: data/model_portfolio
   reports_dir: reports
 
 fetch:

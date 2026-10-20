@@ -407,6 +407,102 @@ def write_portfolio_report(results: dict[str, Any], path: str | Path, period: st
 
 
 # ---------------------------------------------------------------------------
+# モデルポートフォリオ (ペーパー運用)
+# ---------------------------------------------------------------------------
+
+def write_model_portfolio_report(summary: dict[str, Any], path: str | Path, date: str,
+                                 strategies: dict[str, dict[str, Any]], top_n: int,
+                                 bench_tickers: list[str], cost_rate: float) -> Path:
+    """モデルポートフォリオの保有・成績レポートを書き出す。"""
+    ts = now_jst()
+    lines = [
+        "# モデルポートフォリオ (ペーパー運用: 戦略に従うと今なにを持つか)",
+        "",
+        f"- 評価日: {date} ({ts:%Y-%m-%d %H:%M} JST 更新)。価格は評価日以前の最終終値",
+        f"- ルール: 各戦略で市場ごとに上位 {top_n} 銘柄を等金額保有。月初 (その月の最初の実行日) に入れ替え。"
+        f" 入れ替えコスト往復 {cost_rate:.2%} を控除。開始時の評価額を 1.0 とする",
+        f"- 指数 = {' と '.join(bench_tickers)} を等金額で持った場合 (開始日基準)。**対指数がプラスを維持できるかが、この仕組みの価値の判定基準**",
+        "- これは注文を出さないペーパー運用。実際に従う場合の売買は「直近の入れ替え」の通り",
+        "",
+        "## 成績 (開始日から)",
+        "",
+        "| 戦略 | 開始日 | 評価額 | 騰落 | 指数 | 対指数 | 保有数 | 最終入替 |",
+        "|---|---|--:|--:|--:|--:|--:|---|",
+    ]
+    for name, res in summary.items():
+        label = strategies.get(name, {}).get("label", name)
+        nav, bench = res["nav"], res["bench_nav"]
+        excess = (nav - bench) if not _nan(nav) and not _nan(bench) else float("nan")
+        lines.append(
+            f"| {label} | {res['inception']} | {_num(nav, 4)} | {_pct_signed(nav - 1.0)} "
+            f"| {_pct_signed(bench - 1.0) if not _nan(bench) else '—'} | {_pct_signed(excess)} "
+            f"| {len(res['holdings'])} | {_str(res['last_rebalance'])} |"
+        )
+    lines.append("")
+
+    for name, res in summary.items():
+        meta = strategies.get(name, {})
+        lines += [f"## {meta.get('label', name)}", "", f"{meta.get('description', '')}", ""]
+        h = res["holdings"]
+        if h.empty:
+            lines += ["保有なし。", ""]
+        else:
+            lines += ["| 市場 | ティッカー | 銘柄名 | 取得日 | 取得価格 | 現在価格 | 騰落 | ウェイト |",
+                      "|---|---|---|---|--:|--:|--:|--:|"]
+            for row in h.sort_values(["market", "ticker"]).itertuples(index=False):
+                lines.append(
+                    f"| {row.market} | {row.ticker} | {_str(row.name)} | {row.entry_date} "
+                    f"| {_num(row.entry_price)} | {_num(row.price)} | {_pct_signed(row.ret)} | {_pct(row.weight)} |"
+                )
+            lines.append("")
+        t = res.get("trades_last_rebalance", res.get("trades_today"))
+        if t is not None and not t.empty:
+            buys = t[t["side"] == "buy"]
+            sells = t[t["side"] == "sell"]
+            lines += [f"直近の入れ替え ({_str(res['last_rebalance'])}): 買い {len(buys)} / 売り {len(sells)}", ""]
+            if not buys.empty:
+                lines.append("- 買い: " + "、".join(f"{r.ticker} {_str(r.name)}" for r in buys.itertuples()))
+            if not sells.empty:
+                lines.append("- 売り: " + "、".join(f"{r.ticker} {_str(r.name)}" for r in sells.itertuples()))
+            lines.append("")
+
+    # 月末ごとの推移
+    hist_frames = []
+    for name, res in summary.items():
+        nh = res["nav_history"].copy()
+        if nh.empty:
+            continue
+        nh["month"] = nh["date"].astype(str).str[:7]
+        last = nh.groupby("month").last()[["nav", "bench_nav"]]
+        last.columns = [f"{name}_nav", f"{name}_bench"]
+        hist_frames.append(last)
+    if hist_frames:
+        hist = pd.concat(hist_frames, axis=1).sort_index()
+        names = list(summary)
+        lines += ["## 月末時点の推移 (評価額, 開始=1.0)", "",
+                  "| 月 | " + " | ".join(strategies.get(n, {}).get("label", n) for n in names) + " | 指数 |",
+                  "|---|" + "--:|" * (len(names) + 1)]
+        for month, row in hist.iterrows():
+            cells = [_num(row.get(f"{n}_nav"), 4) for n in names]
+            bench_vals = [row.get(f"{n}_bench") for n in names if not _nan(row.get(f"{n}_bench"))]
+            cells.append(_num(bench_vals[0], 4) if bench_vals else "—")
+            lines.append(f"| {month} | " + " | ".join(cells) + " |")
+        lines.append("")
+
+    lines += [
+        "## 注意",
+        "",
+        "- ペーパー運用の成績は開始後の実際の値動きで決まる (バックテストと違い、後から選んだ銘柄ではない)。"
+        "半年〜1年分溜まるまで判断材料としては弱い",
+        "- 為替・税金は考慮していない。各市場を現地通貨で評価し、指数も同じ基準",
+        "",
+        DISCLAIMER,
+        "",
+    ]
+    return _write(path, lines)
+
+
+# ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
 

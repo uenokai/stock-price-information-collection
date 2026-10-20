@@ -3,15 +3,18 @@
 中長期投資向けの銘柄発掘システム。**大目的は投資リターンの最大化**なので、最上位の評価指標は「指数ETFに勝てるか」に置く。
 
 1. **何を買うか**: 財務指標 (ROE・成長率・PER等) と株価モメンタムを業種内で相対評価し、上位60銘柄のウォッチリストを週次で作る
-2. **検証**: 同じ選び方を過去に当てた場合の成績を指数ETF (SPY / 1306.T) と比べる (週次)。実際に出した候補のその後も追跡する (日次)
-3. **参考情報**: ウォッチリスト銘柄のテクニカル条件 (押し目等) を日次で判定する。バックテストでは買う日を決める価値がほぼ無いと分かったので、売買の引き金ではなく参考表示
+2. **過去検証**: 同じ選び方を過去に当てた場合の成績を指数ETF (SPY / 1306.T) と比べる (週次)
+3. **モデルポートフォリオ (ペーパー運用)**: 戦略に従うと「今なにを持つか」を具体的な銘柄リストにし、月初に入れ替え、評価額を指数と並べて日次で記録する。過去検証では測れない「その後の成績」がここに溜まる
+4. **参考情報**: ウォッチリスト銘柄のテクニカル条件 (押し目等) を日次で判定する。バックテストでは買う日を決める価値がほぼ無いと分かったので、売買の引き金ではなく参考表示
 
 ```
 [全ユニバース (約220銘柄: 日本株+米国株)]
       │  週次: 財務指標 + 12-1ヶ月モメンタム を業種内パーセンタイルで合成
       ▼
-[ウォッチリスト (上位60銘柄)] ─── 週次: ポートフォリオ・バックテスト (上位N銘柄の月次保有 vs 指数ETF)
-      │                              → reports/portfolio-backtest.md  ← 指数に勝てなければ指数ETFを買う
+[ウォッチリスト (上位60銘柄)] ─┬─ 週次: ポートフォリオ・バックテスト (上位N銘柄の月次保有 vs 指数ETF)
+      │                        │     → reports/portfolio-backtest.md  ← 指数に勝てなければ指数ETFを買う
+      │                        └─ 日次: モデルポートフォリオ (市場別 上位15 × 2戦略を等金額保有、月初に入れ替え)
+      │                              → reports/model-portfolio.md    ← 今なにを持つか + その後の成績 vs 指数
       │  日次: テクニカル条件の判定 (参考情報)
       ▼
 [reports/latest-signals.md] ──→ data/signal_log.csv に記録
@@ -29,7 +32,7 @@
 | ワークフロー | スケジュール | 内容 |
 |---|---|---|
 | [Weekly Screening](.github/workflows/weekly-screen.yml) | 毎週土曜 07:00 JST | 全ユニバースをスクリーニングし `data/watchlist.csv` と `reports/watchlist.md` を更新。財務スナップショットを `data/fundamentals/` に保存。続けてシグナルのバックテスト (`reports/backtest.md`) とポートフォリオ・バックテスト (`reports/portfolio-backtest.md`) を更新 |
-| [Daily Signals](.github/workflows/daily-signals.yml) | 平日 08:00 JST | ウォッチリストのテクニカル条件を判定し `reports/latest-signals.md` を更新。成立シグナルを `data/signal_log.csv` に記録し、過去シグナルの成績 `reports/performance.md` を更新 |
+| [Daily Signals](.github/workflows/daily-signals.yml) | 平日 08:00 JST | ウォッチリストのテクニカル条件を判定し `reports/latest-signals.md` を更新。成立シグナルを `data/signal_log.csv` に記録し、過去シグナルの成績 `reports/performance.md` を更新。モデルポートフォリオを評価し (月初なら入れ替え) `reports/model-portfolio.md` を更新 |
 | [Tests](.github/workflows/tests.yml) | push / PR 時 | 単体・統合テスト |
 
 - どちらも **Actions タブから手動実行 (workflow_dispatch) 可能**。初回はまず Weekly Screening を手動実行するとウォッチリストが生成される (Daily Signals はウォッチリスト未生成なら自動でスクリーニングも実行する)。
@@ -58,6 +61,10 @@ stock-screener signals --no-notify
 stock-screener portfolio
 stock-screener portfolio --period 15y
 
+# モデルポートフォリオ (ペーパー運用): 評価と月初の入れ替え → reports/model-portfolio.md
+stock-screener model-portfolio
+stock-screener model-portfolio --rebalance   # 月が変わっていなくても入れ替える
+
 # シグナル別バックテスト: 本番と同じルールを過去5年に適用して成績を集計
 stock-screener backtest                   # 現在のウォッチリストが対象
 stock-screener backtest --universe        # 全ユニバースが対象 (選定バイアスを減らしたい場合)
@@ -71,7 +78,9 @@ python -m pytest
 | ファイル | 内容 | 更新 |
 |---|---|---|
 | `reports/index.md` | 入口。各レポートの見る順番と現時点の結論 | 手動 |
-| `reports/portfolio-backtest.md` | **指数に勝てるか**: 上位N銘柄の月次保有 (モメンタム / トレンド / 全銘柄等金額) を指数ETFと比較。CAGR・最大DD・暦年リターン | 週次 |
+| `reports/portfolio-backtest.md` | **指数に勝てるか (過去)**: 上位N銘柄の月次保有 (モメンタム / トレンド / 全銘柄等金額) を指数ETFと比較。CAGR・最大DD・暦年リターン | 週次 |
+| `reports/model-portfolio.md` | **今なにを持つか + その後 (ペーパー運用)**: モメンタム戦略と合成スコア戦略の保有30銘柄 (日15/米15)、月初の入れ替え内容、開始日からの評価額 vs 指数 | 日次 |
+| `data/model_portfolio/` | ペーパー運用の状態: `holdings.csv` (保有), `trades.csv` (入れ替え履歴), `nav.csv` (日次の評価額と指数) | 日次 |
 | `data/watchlist.csv` | 現在のウォッチリスト (スコア・各指標付き) | 週次 |
 | `data/fundamentals/YYYY-MM-DD.csv` | 週次の財務指標スナップショット。第1段階 (財務による選定) を将来検証するために蓄積 | 週次 |
 | `data/signal_log.csv` | シグナル台帳。成立した (判定日, 銘柄, シグナル) を全て記録。`is_new` 列が新規/継続 | 日次 |
@@ -81,9 +90,10 @@ python -m pytest
 | `reports/performance.md` | **成績表**: 実際に出した新規シグナルの +20/+60/+120 営業日後の勝率・平均リターン | 日次 |
 | `reports/backtest.md` | **バックテスト**: 過去5年にルールを適用した場合の成績。ベースライン (全営業日に買った場合) との差 = 「超過」が、そのシグナルのタイミング価値 | 週次 |
 
-### 3つの検証の違い
+### 4つの検証の違い
 
-- **portfolio-backtest.md** が最上位。戦略としての成績 (CAGR・最大DD) を指数ETFと比べる。価格だけで決まる基準 (モメンタム・トレンド) は過去10年で検証済み。財務指標による基準は過去時点の値が無いため、`data/fundamentals/` が1年以上溜まってから検証する
+- **model-portfolio.md** は「これから」の成績。開始後の実際の値動きで決まるので後から選んだ銘柄ではなく、バックテストの弱点 (生存バイアス) が無い。半年〜1年分溜まったら、対指数がプラスかで戦略を続けるか判断する
+- **portfolio-backtest.md** は「過去」の成績。戦略としての成績 (CAGR・最大DD) を指数ETFと比べる。価格だけで決まる基準 (モメンタム・トレンド) は過去10年で検証済み。財務指標による基準は過去時点の値が無いため、`data/fundamentals/` が1年以上溜まってから検証する
 - **backtest.md** はテクニカルシグナル1件ごとの N営業日後リターン。全営業日に買った場合との差 (超過) がほぼゼロ = タイミングの価値なし、が現時点の結果
 - **performance.md** は実際に出したシグナルの追跡。記録が溜まるまで (目安30件以上) は参考値
 - いずれも終値ベースの単純比較。ポートフォリオ・バックテストのみ入れ替えコスト (往復0.2%) を控除。税金・為替は未考慮
@@ -118,9 +128,17 @@ src/stock_screener/
 ├── tracking.py             # シグナル台帳の更新と N営業日後リターンの集計
 ├── backtest.py             # シグナル別の過去検証 (ベースライン比較付き)
 ├── portfolio.py            # ポートフォリオ・バックテスト (月次上位N保有 vs 指数ETF) とモメンタム計算
+├── model_portfolio.py      # モデルポートフォリオ (ペーパー運用): 選定・等金額リバランス・日次評価・状態CSV
 ├── report.py               # Markdownレポート生成
 └── notify.py               # Slack通知
 ```
+
+## 使い方 (運用の流れ)
+
+1. 週に一度 `reports/index.md` から `model-portfolio.md` を開く。対指数がプラスを保っているかを見る
+2. 月初の実行後、「直近の入れ替え」の買い・売りが、戦略に従う場合の売買指示に相当する (自動では発注しない)
+3. `watchlist.md` と `latest-signals.md` は参考情報。候補の背景 (指標・テクニカル状況) を見る用途
+4. 半年〜1年経って対指数がマイナスなら、戦略を見直すか指数ETFに切り替える
 
 ## 今後の予定 (Phase 4)
 
