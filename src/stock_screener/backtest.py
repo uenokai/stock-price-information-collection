@@ -23,6 +23,7 @@ from .tracking import summarize_returns
 logger = logging.getLogger(__name__)
 
 COMBO_NAME = "combo_2plus"  # 2つ以上のシグナルが同日に成立
+UPTREND_NAME = "uptrend_days"  # 上昇トレンド中の全営業日 (トレンドフィルタの効果を見る)
 
 
 def run_backtest(
@@ -62,6 +63,7 @@ def run_backtest(
         fwd = {h: close.shift(-h) / close - 1.0 for h in horizons}
 
         base = pd.DataFrame({f"ret_{h}": fwd[h] for h in horizons}, index=frame.index)
+        base["uptrend"] = frame["uptrend"].fillna(False).astype(bool)
         base = base[frame["valid"]]
         base["ticker"] = ticker
         baseline_frames.append(base)
@@ -99,7 +101,13 @@ def run_backtest(
     base_row = summarize_returns(baseline, horizons, "ticker").tail(1).copy()
     base_row["ticker"] = "baseline"
     base_row = base_row.rename(columns={"ticker": "signal"})
-    summary = pd.concat([summary, base_row], ignore_index=True)
+    extra = [base_row]
+    if "uptrend" in baseline.columns and not baseline.empty:
+        up = baseline[baseline["uptrend"]]
+        up_row = summarize_returns(up, horizons, "ticker", baseline=baseline).tail(1).copy()
+        up_row["ticker"] = UPTREND_NAME
+        extra.insert(0, up_row.rename(columns={"ticker": "signal"}))
+    summary = pd.concat([summary] + extra, ignore_index=True)
 
     by_market = pd.DataFrame()
     if "market" in entries.columns and not entries.empty:

@@ -18,15 +18,18 @@ screening:
   min_sector_size: 5
   # 各指標の重み (合計1.0が目安。欠損指標は重みを再配分して吸収する)
   # pe / pb / debt_to_equity は「低いほど良い」として自動反転される
+  # momentum_12_1 は株価の 12-1ヶ月モメンタム。ポートフォリオ・バックテスト (reports/portfolio-backtest.md)
+  # で「上位15銘柄の月次保有」がユニバース等金額を上回ったため採用。財務指標側はまだ未検証
   weights:
-    roe: 0.20
-    operating_margin: 0.10
-    revenue_growth: 0.15
-    earnings_growth: 0.10
-    pe: 0.15
-    pb: 0.10
-    dividend_yield: 0.05
-    debt_to_equity: 0.15
+    roe: 0.15
+    operating_margin: 0.08
+    revenue_growth: 0.12
+    earnings_growth: 0.08
+    pe: 0.12
+    pb: 0.08
+    dividend_yield: 0.04
+    debt_to_equity: 0.11
+    momentum_12_1: 0.22
 
 signals:
   # 取得する株価履歴の期間 (52週高値+200日SMAの計算に2年必要)
@@ -52,8 +55,27 @@ tracking:
   horizons: [20, 60, 120]
 
 backtest:
-  # バックテストで使う株価履歴の期間
+  # シグナル別バックテストで使う株価履歴の期間
   history_period: "5y"
+
+portfolio:
+  # ポートフォリオ・バックテスト (毎月上位N銘柄を等金額保有 vs 指数ETF) の設定
+  history_period: "10y"
+  # 市場ごとの保有銘柄数
+  top_n_per_market: 15
+  # リバランス頻度: M=月次, Q=四半期
+  rebalance: "M"
+  # 入れ替えコスト (往復)。入れ替えた銘柄の割合 × この率を控除
+  cost_rate: 0.002
+  # 12-1ヶ月モメンタム: lookback 営業日前から skip 営業日前までの騰落率
+  momentum_lookback: 252
+  momentum_skip: 21
+  # トレンドフィルタ: 株価がこの日数の移動平均より上の銘柄だけ保有
+  trend_window: 200
+  # 市場ごとのベンチマーク (配当込みで比較するため指数ではなくETFを使う)
+  benchmarks:
+    japan: "1306.T"   # TOPIX連動ETF
+    us: "SPY"         # S&P500連動ETF
 
 paths:
   cache_dir: data/cache
@@ -64,6 +86,10 @@ paths:
 
 fetch:
   # 財務データ取得時のリクエスト間隔 (秒)。レート制限対策
-  fundamentals_pause: 0.2
-  # 取得失敗時のリトライ回数
+  fundamentals_pause: 0.3
+  # 取得失敗時のリトライ回数 (3, 6, 12 秒後)
   max_retries: 2
+  # 1周目で取れなかった銘柄をまとめて取り直す回数と、その前に待つ秒数
+  # (Yahoo の "Invalid Crumb" 401 は数十秒〜数分で解除されることが多い)
+  retry_passes: 2
+  retry_cooldown: 90

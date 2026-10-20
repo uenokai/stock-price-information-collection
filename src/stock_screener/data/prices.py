@@ -11,10 +11,18 @@ import logging
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
+
+# データ不良の判定: 1日で GLITCH_DROP 以下に急落し、GLITCH_WINDOW 営業日以内に
+# 急落前の GLITCH_RECOVER 以内まで戻る → 急落中の値を欠損扱いにして前日値で埋める
+# (yfinance の分割・配当調整ミスで 1306.T 等に実際に発生する)
+GLITCH_DROP = 0.5
+GLITCH_WINDOW = 5
+GLITCH_RECOVER = 0.3
 
 _PRICE_COLUMNS = ["open", "high", "low", "close", "volume"]
 
@@ -75,10 +83,36 @@ def _split_by_ticker(raw: pd.DataFrame, tickers: list[str]) -> dict[str, pd.Data
         sub.columns = [str(c).lower().replace(" ", "_") for c in sub.columns]
         sub = sub[[c for c in _PRICE_COLUMNS if c in sub.columns]]
         sub = sub.dropna(subset=["close"])
+        sub = _remove_glitches(sub, ticker)
         if not sub.empty:
             sub.index.name = "date"
             result[ticker] = sub
     return result
+
+
+def _remove_glitches(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """調整後終値の明らかな不良値 (一時的な急落→即回復、0以下) を前日値で埋める。"""
+    close = df["close"].astype(float)
+    bad = close <= 0
+    values = close.to_numpy()
+    n = len(values)
+    i = 1
+    while i < n:
+        prev = values[i - 1]
+        if prev > 0 and values[i] > 0 and values[i] / prev < 1.0 - GLITCH_DROP:
+            for j in range(i + 1, min(i + 1 + GLITCH_WINDOW, n)):
+                if abs(values[j] / prev - 1.0) <= GLITCH_RECOVER:
+                    bad.iloc[i:j] = True
+                    i = j
+                    break
+        i += 1
+    if bad.any():
+        logger.warning("%s: 不良値 %d 日分を前日値で補正しました", ticker, int(bad.sum()))
+        df = df.copy()
+        df.loc[bad, _PRICE_COLUMNS] = np.nan
+        df[_PRICE_COLUMNS] = df[_PRICE_COLUMNS].ffill()
+        df = df.dropna(subset=["close"])
+    return df
 
 
 def _cache_path(cache_dir: str | Path, period: str) -> Path:

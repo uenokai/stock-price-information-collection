@@ -50,8 +50,8 @@ def write_watchlist_report(
     ]
     lines += _watchlist_diff_lines(watchlist, previous)
     lines += [
-        "| # | ティッカー | 銘柄名 | 市場 | 業種 | スコア | ROE | 売上成長 | PER | PBR | 指標数 |",
-        "|--:|---|---|---|---|--:|--:|--:|--:|--:|--:|",
+        "| # | ティッカー | 銘柄名 | 市場 | 業種 | スコア | ROE | 売上成長 | PER | PBR | モメンタム | 指標数 |",
+        "|--:|---|---|---|---|--:|--:|--:|--:|--:|--:|--:|",
     ]
     prev_tickers = set(previous["ticker"]) if previous is not None and "ticker" in previous else set()
     for i, row in enumerate(watchlist.itertuples(index=False), start=1):
@@ -61,6 +61,7 @@ def write_watchlist_report(
             f"| {row.score:.3f} | {_pct(getattr(row, 'roe', None))} "
             f"| {_pct(getattr(row, 'revenue_growth', None))} "
             f"| {_num(getattr(row, 'pe', None))} | {_num(getattr(row, 'pb', None))} "
+            f"| {_pct_signed(getattr(row, 'momentum_12_1', None))} "
             f"| {getattr(row, 'metric_coverage', '')} |"
         )
     lines += ["", DISCLAIMER, ""]
@@ -119,8 +120,9 @@ def write_signals_report(results: list[dict[str, Any]], path: str | Path,
         f"- 判定日時: {ts:%Y-%m-%d %H:%M} JST",
         f"- 監視対象: ウォッチリスト {watchlist_size} 銘柄",
         f"- シグナル成立: **{len(results)} 銘柄** (うち新規 🆕 {n_new} 銘柄)",
-        "- 🆕 = そのシグナルが直近の営業日に成立していなかった (= 今日初めて点灯)。",
-        "  無印は継続中。Slack通知は新規のみ。",
+        "- 🆕 = そのシグナルが直近の営業日に成立していなかった (= 今日初めて点灯)。無印は継続中。",
+        "- バックテスト (`reports/backtest.md`) ではこれらのシグナルに買う日を決める価値はほぼ無かった。"
+        "参考情報として記録・追跡している。",
         "",
     ]
     if not results:
@@ -182,6 +184,7 @@ def build_slack_message(results: list[dict[str, Any]], only_new: bool = True) ->
 _GROUP_LABELS = {
     "all": "全シグナル合計",
     "baseline": "ベースライン (全営業日に買った場合)",
+    "uptrend_days": "上昇トレンド中の全営業日 (株価>200日線 かつ 50日線>200日線)",
     "combo_2plus": "複数シグナル同時成立 (2つ以上)",
 }
 
@@ -310,6 +313,92 @@ def write_backtest_report(
         "生存バイアス・先読みバイアスが入る。ここで見るのは第2段階 (タイミング判定) のルールの良し悪し。",
         "- 手数料・スリッページ・配当は考慮していない。終値で買い、N営業日後の終値で評価した単純比較。",
         "- 件数が少ない区分 (目安30件未満) の数字は偶然の影響が大きい。",
+        "",
+        DISCLAIMER,
+        "",
+    ]
+    return _write(path, lines)
+
+
+# ---------------------------------------------------------------------------
+# ポートフォリオ・バックテスト
+# ---------------------------------------------------------------------------
+
+_STRATEGY_LABELS = {
+    "index": "指数ETF (買って持ち続ける)",
+    "universe_ew": "ユニバース全銘柄 等金額 (月次リバランス)",
+    "momentum_top": "モメンタム上位N 等金額",
+    "momentum_trend": "モメンタム上位N + トレンドフィルタ",
+    "trend_only": "トレンドフィルタのみ (200日線より上の全銘柄 等金額)",
+}
+_STRATEGY_SHORT = {
+    "index": "指数ETF",
+    "universe_ew": "全銘柄等金額",
+    "momentum_top": "モメンタム",
+    "momentum_trend": "モメンタム+トレンド",
+    "trend_only": "トレンドのみ",
+}
+
+
+def write_portfolio_report(results: dict[str, Any], path: str | Path, period: str,
+                           cfg: dict[str, Any]) -> Path:
+    """ポートフォリオ・バックテストのレポートを書き出す。"""
+    ts = now_jst()
+    lines = [
+        "# ポートフォリオ・バックテスト (指数に勝てるかの検証)",
+        "",
+        f"- 実行日時: {ts:%Y-%m-%d %H:%M} JST / 株価期間 {period}",
+        f"- 戦略: 毎月初の営業日に基準で上位 {cfg.get('top_n_per_market', 15)} 銘柄を選び等金額で保有。"
+        f" 入れ替えコスト往復 {float(cfg.get('cost_rate', 0.002)):.2%} を控除。配当は株価に反映済み (yfinance 調整後終値)",
+        "- 「対指数」= その戦略の CAGR − 指数ETFの CAGR。**ここがプラスでなければ指数ETFを買う方が良い**",
+        "- モメンタム = 12ヶ月前から1ヶ月前までの騰落率 (直近1ヶ月を除く標準的な定義)",
+        "",
+    ]
+    if not results:
+        lines += ["価格データが不足しているため結果がありません。", ""]
+    for market, res in results.items():
+        strategies = res["strategies"]
+        idx_cagr = strategies["index"]["metrics"].get("cagr", float("nan"))
+        lines += [
+            f"## {market} ({res['n_tickers']} 銘柄, ベンチマーク {res['benchmark']}, "
+            f"{res['start']:%Y-%m-%d} 〜 {res['end']:%Y-%m-%d})",
+            "",
+            "| 戦略 | 累積 | CAGR | 対指数 | 年率ボラ | 最大DD | シャープ | 平均入替率/月 |",
+            "|---|--:|--:|--:|--:|--:|--:|--:|",
+        ]
+        for name, s_res in strategies.items():
+            m = s_res["metrics"]
+            excess = m["cagr"] - idx_cagr if not _nan(m.get("cagr")) and not _nan(idx_cagr) else float("nan")
+            lines.append(
+                f"| {_STRATEGY_LABELS.get(name, name)} | {_pct_signed(m.get('total'))} "
+                f"| {_pct_signed(m.get('cagr'))} | {_pct_signed(excess) if name != 'index' else '—'} "
+                f"| {_pct(m.get('vol'))} | {_pct_signed(m.get('max_dd'))} | {_num(m.get('sharpe'), 2)} "
+                f"| {_pct(s_res.get('turnover'))} |"
+            )
+        lines.append("")
+        yearly = res.get("yearly")
+        if yearly is not None and not yearly.empty:
+            cols = list(yearly.columns)
+            lines += ["暦年リターン:", "",
+                      "| 年 | " + " | ".join(_STRATEGY_SHORT.get(c, c) for c in cols) + " |",
+                      "|---|" + "--:|" * len(cols)]
+            first_year, last_year = yearly.index[0], yearly.index[-1]
+            for year, row in yearly.iterrows():
+                label = str(year)
+                if year == first_year and (res["start"].month, res["start"].day) != (1, 1):
+                    label += f" ({res['start']:%m/%d}〜)"
+                if year == last_year and (res["end"].month, res["end"].day) < (12, 28):
+                    label += f" (〜{res['end']:%m/%d})"
+                lines.append(f"| {label} | " + " | ".join(_pct_signed(row[c]) for c in cols) + " |")
+            lines.append("")
+    lines += [
+        "## 読み方と限界",
+        "",
+        "- 「ユニバース全銘柄 等金額」が指数を上回る分は、ユニバースの選び方 (現在の大型株を後から選んでいる = 生存バイアス) "
+        "による上乗せを含む。戦略の実力は **「ユニバース全銘柄 等金額」との差** で見るのが公平。",
+        "- 財務指標による選定 (週次スクリーニング) は過去時点の値が無いため、ここでは検証していない。"
+        "`data/fundamentals/` の週次スナップショットが1年以上溜まった時点で同じ枠組みで検証する。",
+        "- 為替は考慮していない (各市場を現地通貨で評価)。税金は考慮していない。",
         "",
         DISCLAIMER,
         "",

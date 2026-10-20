@@ -1,7 +1,9 @@
 # 週次ファンダメンタル・スクリーニング + バックテスト
 # 毎週土曜 07:00 JST (金曜 22:00 UTC) に全ユニバースをスクリーニングし、
 # ウォッチリストとレポートをリポジトリにコミットする。
-# 続けて新しいウォッチリストでシグナルルールのバックテストを行い reports/backtest.md を更新する。
+# 続けてシグナル別バックテスト (reports/backtest.md) とポートフォリオ・バックテスト
+# (reports/portfolio-backtest.md: 上位N銘柄の月次保有 vs 指数ETF) を更新する。
+# 財務指標のスナップショット (data/fundamentals/YYYY-MM-DD.csv) もコミットして蓄積する。
 name: Weekly Screening
 
 on:
@@ -34,8 +36,11 @@ jobs:
       - name: Run screening
         run: stock-screener screen
 
-      - name: Run backtest on the new watchlist
+      - name: Run signal backtest on the new watchlist
         run: stock-screener backtest
+
+      - name: Run portfolio backtest (vs index ETF)
+        run: stock-screener portfolio
 
       - name: Commit results
         run: |
