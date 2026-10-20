@@ -87,3 +87,30 @@ class TestMarketCapFilter:
         })
         result = apply_market_cap_filter(df)
         assert result["ticker"].tolist() == ["A"]
+
+
+class TestFetchFundamentalsRetryPasses:
+    def test_failed_tickers_are_retried_in_later_pass(self, monkeypatch):
+        from stock_screener.data import fundamentals as fm
+
+        calls = {"A": 0, "B": 0}
+
+        def fake_get_info(ticker, max_retries):
+            calls[ticker] += 1
+            if ticker == "B" and calls["B"] < 2:
+                return {}  # 1周目は失敗、2周目で成功
+            return {"marketCap": 1000, "sector": "Tech", "returnOnEquity": 0.1}
+
+        monkeypatch.setattr(fm, "_get_info", fake_get_info)
+        monkeypatch.setattr(fm.time, "sleep", lambda s: None)
+        df = fm.fetch_fundamentals(["A", "B"], pause=0, max_retries=0, retry_passes=2, retry_cooldown=0)
+        assert df.set_index("ticker").loc["B", "market_cap"] == 1000
+        assert calls == {"A": 1, "B": 2}
+
+    def test_permanent_failure_gives_nan_row(self, monkeypatch):
+        from stock_screener.data import fundamentals as fm
+
+        monkeypatch.setattr(fm, "_get_info", lambda t, r: {})
+        monkeypatch.setattr(fm.time, "sleep", lambda s: None)
+        df = fm.fetch_fundamentals(["X"], pause=0, max_retries=0, retry_passes=1, retry_cooldown=0)
+        assert len(df) == 1 and df["market_cap"].isna().all()
