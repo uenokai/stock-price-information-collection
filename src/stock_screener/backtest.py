@@ -1,11 +1,11 @@
-"""バックテスト (Phase 3)。
+"""過去検証 (Phase 3)。
 
-ウォッチリスト (または全ユニバース) の過去数年分の日足に、本番と同じルール
-(`compute_signal_frame`) を適用し、シグナル成立日からの N 営業日後リターンを集計する。
-「全営業日に買った場合」(ベースライン) と比べて、シグナルに上乗せ効果があるかを見る。
+候補リスト (または対象銘柄すべて) の過去数年分の日足に、本番と同じルール
+(`compute_signal_frame`) を適用し、合図の成立日からの N 営業日後リターンを集計する。
+「全営業日に買った場合」(比較基準) と比べて、合図に上乗せ効果があるかを見る。
 
-注意: 現在のウォッチリストは「今の」財務指標で選ばれた銘柄なので、過去の値動きに
-適用すると生存バイアス・先読みバイアスが入る。ここで検証できるのは主に
+注意: 現在の候補リストは「今の」財務指標で選ばれた銘柄なので、過去の値動きに
+適用すると生存者の偏り・先読みの偏りが入る。ここで検証できるのは主に
 第2段階 (タイミング判定) のルールであり、第1段階の選定効果ではない。
 """
 
@@ -22,8 +22,8 @@ from .tracking import summarize_returns
 
 logger = logging.getLogger(__name__)
 
-COMBO_NAME = "combo_2plus"  # 2つ以上のシグナルが同日に成立
-UPTREND_NAME = "uptrend_days"  # 上昇トレンド中の全営業日 (トレンドフィルタの効果を見る)
+COMBO_NAME = "combo_2plus"  # 2つ以上の合図が同日に成立
+UPTREND_NAME = "uptrend_days"  # 上昇傾向中の全営業日 (上昇傾向の絞り込みの効果を見る)
 
 
 def run_backtest(
@@ -33,13 +33,13 @@ def run_backtest(
     gap: int,
     meta: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """全銘柄にシグナルルールを適用し、エントリー一覧と成績表を返す。
+    """全銘柄に合図ルールを適用し、買い付け一覧と成績表を返す。
 
     Args:
         prices: {ticker: 日足OHLCV}
         params: config.yaml の signals セクション
         horizons: 評価する営業日数のリスト
-        gap: 新規エントリーとみなす間隔 (営業日) = renotify_after_days
+        gap: 新規買い付けとみなす間隔 (営業日) = renotify_after_days
         meta: ticker, name, market 等を含む DataFrame (レポート表示用、任意)
 
     Returns:
@@ -115,7 +115,7 @@ def run_backtest(
         by_market = summarize_returns(core, horizons, "market")
         by_market = by_market[by_market["market"] != "all"]
 
-    logger.info("バックテスト完了: %d 銘柄, %d 営業日分, エントリー %d 件",
+    logger.info("過去検証完了: %d 銘柄, %d 営業日分, 買い付け %d 件",
                 n_tickers, n_days, len(entries[entries["signal"] != COMBO_NAME]))
     return {
         "entries": entries,

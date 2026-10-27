@@ -1,4 +1,4 @@
-"""テクニカル指標の計算。"""
+"""値動き指標の計算。"""
 
 from __future__ import annotations
 
@@ -29,5 +29,5 @@ def rsi(close: pd.Series, window: int = 14) -> pd.Series:
 
 
 def rolling_high(series: pd.Series, window: int) -> pd.Series:
-    """当日を含まない過去N日の最高値 (高値ブレイク判定用)。"""
+    """当日を含まない過去N日の最高値 (高値更新判定用)。"""
     return series.rolling(window, min_periods=window).max().shift(1)

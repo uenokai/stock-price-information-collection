@@ -1,10 +1,10 @@
-"""ファンダメンタル・スクリーニング (第1段階)。
+"""財務指標による絞り込み (第1段階)。
 
-各指標を業種内パーセンタイル (0〜1) に変換してから重み付き平均で合成スコアを算出する。
+各指標を業種内の順位 (0〜1) に変換してから重み付き平均で総合点を算出する。
 業種内で相対評価する理由: 業種によって適正なPERや利益率の水準が大きく違うため、
 生の値で比較すると特定業種 (例: 銀行=低PBR) ばかりが上位に来てしまう。
 
-パーセンタイルは比率ベースの指標 (ROE, PER等) にのみ適用するため、
+順位は比率ベースの指標 (ROE, PER等) にのみ適用するため、
 日本株と米国株のように通貨が違う市場を混ぜても問題ない。
 """
 
@@ -28,7 +28,7 @@ METRIC_DIRECTIONS = {
     "pb": -1,
     "dividend_yield": 1,
     "debt_to_equity": -1,
-    "momentum_12_1": 1,   # 12-1ヶ月モメンタム (株価から計算。portfolio.latest_momentum)
+    "momentum_12_1": 1,   # 株価上昇率 (株価から計算。portfolio.latest_momentum)
 }
 
 # 0以下の値が「割安」ではなく「異常値」を意味する指標 (赤字企業のPER等) → 欠損扱い
@@ -36,14 +36,14 @@ _POSITIVE_ONLY = ("pe", "pb")
 
 
 def score_fundamentals(df: pd.DataFrame, screening_cfg: dict[str, Any]) -> pd.DataFrame:
-    """合成スコアを算出し、スコア降順に並べた DataFrame を返す。
+    """総合点を算出し、点数降順に並べた DataFrame を返す。
 
     Args:
         df: ticker, sector と METRIC_DIRECTIONS の指標カラムを含む DataFrame
         screening_cfg: config.yaml の screening セクション
 
     Returns:
-        入力に score, metric_coverage カラムを加え、スコア算出不能行を除いたもの
+        入力に score, metric_coverage カラムを加え、点数算出不能行を除いたもの
     """
     weights: dict[str, float] = screening_cfg["weights"]
     min_required: int = screening_cfg.get("min_metrics_required", 4)
@@ -83,7 +83,7 @@ def score_fundamentals(df: pd.DataFrame, screening_cfg: dict[str, Any]) -> pd.Da
 
     dropped = work["score"].isna().sum()
     if dropped:
-        logger.info("指標不足でスコア算出できない銘柄を %d 件除外", dropped)
+        logger.info("指標不足で点数算出できない銘柄を %d 件除外", dropped)
 
     result = work.dropna(subset=["score"]).sort_values("score", ascending=False)
     return result.reset_index(drop=True)
@@ -96,14 +96,14 @@ def apply_market_cap_filter(df: pd.DataFrame) -> pd.DataFrame:
     mask = df["market_cap"] >= df["min_market_cap"]  # NaN は False → 除外
     removed = (~mask).sum()
     if removed:
-        logger.info("時価総額フィルタで %d 銘柄を除外", removed)
+        logger.info("時価総額絞り込みで %d 銘柄を除外", removed)
     return df[mask].copy()
 
 
 def _sector_percentile(
     values: pd.Series, sectors: pd.Series, min_sector_size: int
 ) -> pd.Series:
-    """業種内パーセンタイル。業種のサンプル数が少なければ全体パーセンタイルで代用。"""
+    """業種内の順位。業種のサンプル数が少なければ全体の順位で代用。"""
     sector_pct = values.groupby(sectors).rank(pct=True)
     global_pct = values.rank(pct=True)
     sector_counts = values.notna().groupby(sectors).transform("sum")

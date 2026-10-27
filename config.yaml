@@ -10,16 +10,16 @@ universe:
     min_market_cap: 5000000000      # 50億ドル (USD)
 
 screening:
-  # ウォッチリストに残す銘柄数 (合成スコア上位N)
+  # 候補リストに残す銘柄数 (総合点上位N)
   watchlist_size: 60
-  # スコア算出に最低限必要な指標数 (欠損が多い銘柄を除外)
+  # 点数算出に最低限必要な指標数 (欠損が多い銘柄を除外)
   min_metrics_required: 4
-  # 業種内パーセンタイルを使う最小業種サイズ (未満なら全体パーセンタイルで代用)
+  # 業種内の順位を使う最小業種サイズ (未満なら全体の順位で代用)
   min_sector_size: 5
   # 各指標の重み (合計1.0が目安。欠損指標は重みを再配分して吸収する)
   # pe / pb / debt_to_equity は「低いほど良い」として自動反転される
-  # momentum_12_1 は株価の 12-1ヶ月モメンタム。ポートフォリオ・バックテスト (reports/portfolio-backtest.md)
-  # で「上位15銘柄の月次保有」がユニバース等金額を上回ったため採用。財務指標側はまだ未検証
+  # momentum_12_1 は株価の 株価上昇率。保有銘柄の過去検証 (reports/portfolio-backtest.md)
+  # で「上位15銘柄の月次保有」が全銘柄の等金額を上回ったため採用。財務指標側はまだ未検証
   weights:
     roe: 0.15
     operating_margin: 0.08
@@ -36,44 +36,44 @@ signals:
   history_period: "2y"
   # ゴールデンクロス: 直近N営業日以内のクロスを検知
   golden_cross_lookback: 5
-  # 52週高値ブレイク: 出来高が20日平均のこの倍数以上であること
+  # 52週高値の更新: 出来高が20日平均のこの倍数以上であること
   breakout_volume_mult: 1.5
-  # 押し目: 上昇トレンド中 (株価>200日SMA かつ 50日SMA>200日SMA) でRSIがこの範囲
+  # 押し目: 上昇傾向中 (株価>200日SMA かつ 50日SMA>200日SMA) でRSIがこの範囲
   pullback_rsi_min: 30
   pullback_rsi_max: 45
   # 出来高急増: 20日平均のこの倍数以上 かつ 当日リターンがこの値以上
   volume_surge_mult: 3.0
   volume_surge_min_return: 0.02
-  # 「新規」シグナルの定義: 同じ銘柄・同じシグナルが直前この営業日数の間に成立していなかった
-  # (押し目のように連日成立するシグナルの重複通知を防ぎ、成績集計で1回と数えるため)
+  # 「新規」合図の定義: 同じ銘柄・同じ合図が直前この営業日数の間に成立していなかった
+  # (押し目のように連日成立する合図の重複通知を防ぎ、成績集計で1回と数えるため)
   renotify_after_days: 10
-  # Slack通知を新規シグナルだけにする (false なら継続中も毎日通知)
+  # Slack通知を新規の合図だけにする (false なら継続中も毎日通知)
   notify_only_new: true
 
 tracking:
-  # シグナル成立後の成績を測る期間 (営業日)。performance.md と backtest.md の列になる
+  # 合図の成立後の成績を測る期間 (営業日)。performance.md と backtest.md の列になる
   horizons: [20, 60, 120]
 
 backtest:
-  # シグナル別バックテストで使う株価履歴の期間
+  # 合図ごとの過去検証で使う株価履歴の期間
   history_period: "5y"
 
 portfolio:
-  # ポートフォリオ・バックテストとモデルポートフォリオ (ペーパー運用) 共通の設定
-  # バックテストで使う株価履歴の期間
+  # 保有銘柄の過去検証と仮の運用 共通の設定
+  # 過去検証で使う株価履歴の期間
   history_period: "10y"
   # 市場ごとの保有銘柄数
   top_n_per_market: 15
-  # リバランス頻度: M=月次, Q=四半期
+  # 入れ替え頻度: M=月次, Q=四半期
   rebalance: "M"
-  # 入れ替えコスト (往復)。入れ替えた銘柄の割合 × この率を控除
+  # 入れ替え手数料 (往復)。入れ替えた銘柄の割合 × この率を控除
   cost_rate: 0.002
-  # 12-1ヶ月モメンタム: lookback 営業日前から skip 営業日前までの騰落率
+  # 株価上昇率: lookback 営業日前から skip 営業日前までの騰落率
   momentum_lookback: 252
   momentum_skip: 21
-  # トレンドフィルタ: 株価がこの日数の移動平均より上の銘柄だけ保有
+  # 上昇傾向の絞り込み: 株価がこの日数の移動平均より上の銘柄だけ保有
   trend_window: 200
-  # 市場ごとのベンチマーク (配当込みで比較するため指数ではなくETFを使う)
+  # 市場ごとの比較対象の指数 (配当込みで比較するため指数ではなくETFを使う)
   benchmarks:
     japan: "1306.T"   # TOPIX連動ETF
     us: "SPY"         # S&P500連動ETF
@@ -83,7 +83,7 @@ paths:
   fundamentals_dir: data/fundamentals
   watchlist: data/watchlist.csv
   signal_log: data/signal_log.csv
-  # モデルポートフォリオ (ペーパー運用) の状態 (holdings / trades / nav の CSV)
+  # 仮の運用 の状態 (holdings / trades / nav の CSV)
   model_portfolio_dir: data/model_portfolio
   reports_dir: reports
 

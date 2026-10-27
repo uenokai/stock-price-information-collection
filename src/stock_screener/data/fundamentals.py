@@ -1,11 +1,11 @@
-"""財務指標 (ファンダメンタルデータ) の取得。
+"""財務指標 (財務指標データ) の取得。
 
 yfinance の Ticker.info から必要な指標だけを抽出する。
 1銘柄ずつの取得になるため、レート制限対策のポーズとリトライを入れている。
 
 注意: 指標の単位は yfinance のバージョンによって揺れることがある
-(例: dividendYield が割合か%か)。スコアリングはパーセンタイル (順位) ベース
-なので、単位の揺れはスコアに影響しない。
+(例: dividendYield が割合か%か)。点数付けは順位ベース
+なので、単位の揺れは点数に影響しない。
 """
 
 from __future__ import annotations
@@ -47,11 +47,11 @@ def fetch_fundamentals(
     retry_passes: int = 2,
     retry_cooldown: float = 60.0,
 ) -> pd.DataFrame:
-    """各ティッカーの財務指標を取得して DataFrame で返す。
+    """各銘柄コードの財務指標を取得して DataFrame で返す。
 
     1周目で取れなかった銘柄は、retry_cooldown 秒待ってから最大 retry_passes 回まとめて取り直す
     (Yahoo のレート制限 "Invalid Crumb" 401 は数十秒〜数分で解除されることが多いため)。
-    最後まで失敗した銘柄は指標が全て NaN の行になる (後段の時価総額フィルタで落ちる)。
+    最後まで失敗した銘柄は指標が全て NaN の行になる (後段の時価総額絞り込みで落ちる)。
     """
     total = len(tickers)
     infos: dict[str, dict] = {}

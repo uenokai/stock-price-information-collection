@@ -1,13 +1,13 @@
-"""シグナル台帳 (signal log) と事後成績の追跡。
+"""合図台帳 (signal log) と事後成績の追跡。
 
-日次判定で成立したシグナルを `data/signal_log.csv` に追記し、
+日次判定で成立した合図を `data/signal_log.csv` に追記し、
 後日その銘柄がどうなったか (N営業日後のリターン) を集計する。
 「このルールは実際に機能しているか」を数字で確認するためのフィードバックループ。
 
-台帳の行 = (判定日, 銘柄, シグナル) の組。is_new=True の行だけを
-「エントリー」として成績集計に使う (連日成立する押し目を重複して数えないため)。
+台帳の行 = (判定日, 銘柄, 合図) の組。is_new=True の行だけを
+「買い付け」として成績集計に使う (連日成立する押し目を重複して数えないため)。
 一度確定した N営業日後リターン (ret_N 列) は台帳に書き戻して保存する。
-株価の取得期間 (2年) より古いエントリーでも成績が消えないようにするため。
+株価の取得期間 (2年) より古い買い付けでも成績が消えないようにするため。
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ DEFAULT_HORIZONS = [20, 60, 120]
 
 
 def results_to_log_rows(results: list[dict[str, Any]], run_date: str) -> pd.DataFrame:
-    """scan_watchlist の結果を台帳の行 (1シグナル=1行) に変換する。"""
+    """scan_watchlist の結果を台帳の行 (1合図=1行) に変換する。"""
     rows = []
     for r in results:
         m = r.get("metrics", {})
@@ -82,7 +82,7 @@ def update_signal_log(path: str | Path, new_rows: pd.DataFrame) -> pd.DataFrame:
         log = pd.concat([log, new_rows], ignore_index=True)
     log = log.sort_values(["date", "ticker", "signal"]).reset_index(drop=True)
     save_signal_log(path, log)
-    logger.info("シグナル台帳を更新: %s (%d 行, 当日分 %d 行)", path, len(log), len(new_rows))
+    logger.info("合図台帳を更新: %s (%d 行, 当日分 %d 行)", path, len(log), len(new_rows))
     return log
 
 
@@ -91,7 +91,7 @@ def forward_returns(
     prices: dict[str, pd.DataFrame],
     horizons: list[int] | None = None,
 ) -> pd.DataFrame:
-    """台帳の各行に、エントリー後 N 営業日のリターンと現時点リターンを付ける。
+    """台帳の各行に、買い付け後 N 営業日のリターンと現時点リターンを付ける。
 
     Returns:
         入力に ret_{h} (h ∈ horizons, 未到達は NaN), ret_now, days_elapsed を加えたもの。
@@ -136,7 +136,7 @@ def summarize_returns(
     group_col: str = "signal",
     baseline: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """シグナル種別ごとの成績表を作る。
+    """合図種別ごとの成績表を作る。
 
     各行: group, entries (件数), そして horizon ごとに n_{h} (評価済み件数),
     win_{h} (勝率: リターン>0 の割合), mean_{h}, median_{h}。
