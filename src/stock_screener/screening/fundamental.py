@@ -28,6 +28,7 @@ METRIC_DIRECTIONS = {
     "pb": -1,
     "dividend_yield": 1,
     "debt_to_equity": -1,
+    "momentum_12_1": 1,   # 12-1ヶ月モメンタム (株価から計算。portfolio.latest_momentum)
 }
 
 # 0以下の値が「割安」ではなく「異常値」を意味する指標 (赤字企業のPER等) → 欠損扱い

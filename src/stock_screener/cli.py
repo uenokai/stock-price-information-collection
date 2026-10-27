@@ -1,7 +1,10 @@
 """コマンドラインインターフェース。
 
-- `stock-screener screen`  : 週次ファンダメンタル・スクリーニング → ウォッチリスト生成
-- `stock-screener signals` : 日次テクニカル・シグナル判定 → レポート生成 + 通知
+- `stock-screener screen`   : 週次ファンダメンタル・スクリーニング → ウォッチリスト生成
+- `stock-screener signals`  : 日次テクニカル・シグナル判定 → 台帳記録 + 成績更新 + レポート + 通知
+- `stock-screener backtest` : シグナルルールの過去検証 → reports/backtest.md
+- `stock-screener portfolio`: 毎月上位N銘柄を保有した場合 vs 指数ETF → reports/portfolio-backtest.md
+- `stock-screener model-portfolio`: ペーパー運用の評価・月次入れ替え → reports/model-portfolio.md
 """
 
 from __future__ import annotations
@@ -14,18 +17,41 @@ from typing import Any
 
 import pandas as pd
 
+from .backtest import run_backtest as _run_backtest
 from .config import load_config
 from .data.fundamentals import fetch_fundamentals
 from .data.prices import fetch_price_history
+from .model_portfolio import (
+    STRATEGIES,
+    load_state,
+    run_model_portfolio as _run_model_portfolio,
+    save_state,
+    select_targets,
+)
 from .notify import send_slack
+from .portfolio import latest_momentum
+from .portfolio import run_portfolio_backtest as _run_portfolio_backtest
 from .report import (
     build_slack_message,
     now_jst,
+    write_backtest_report,
+    write_model_portfolio_report,
+    write_performance_report,
+    write_portfolio_report,
     write_signals_report,
     write_watchlist_report,
 )
 from .screening.fundamental import apply_market_cap_filter, score_fundamentals
 from .signals.technical import scan_watchlist
+from .tracking import (
+    DEFAULT_HORIZONS,
+    forward_returns,
+    load_signal_log,
+    results_to_log_rows,
+    save_signal_log,
+    summarize_returns,
+    update_signal_log,
+)
 from .universe import load_universe
 
 logger = logging.getLogger(__name__)
@@ -34,7 +60,7 @@ logger = logging.getLogger(__name__)
 WATCHLIST_COLUMNS = [
     "ticker", "name", "market", "sector", "industry", "currency", "score",
     "metric_coverage", "market_cap", "roe", "operating_margin", "revenue_growth",
-    "earnings_growth", "pe", "pb", "dividend_yield", "debt_to_equity",
+    "earnings_growth", "pe", "pb", "dividend_yield", "debt_to_equity", "momentum_12_1",
 ]
 
 
@@ -53,7 +79,19 @@ def run_screen(config: dict[str, Any], limit: int | None = None) -> pd.DataFrame
         universe["ticker"].tolist(),
         pause=float(fetch_cfg.get("fundamentals_pause", 0.2)),
         max_retries=int(fetch_cfg.get("max_retries", 2)),
+        retry_passes=int(fetch_cfg.get("retry_passes", 2)),
+        retry_cooldown=float(fetch_cfg.get("retry_cooldown", 60)),
     )
+    # 株価モメンタム (12-1ヶ月) も指標に加える。ポートフォリオ・バックテストで効果を確認済み
+    if "momentum_12_1" in screening_cfg.get("weights", {}):
+        pf_cfg = config.get("portfolio", {})
+        prices = fetch_price_history(universe["ticker"].tolist(),
+                                     period=str(config["signals"].get("history_period", "2y")),
+                                     cache_dir=paths.get("cache_dir"))
+        momentum = latest_momentum(prices, int(pf_cfg.get("momentum_lookback", 252)),
+                                   int(pf_cfg.get("momentum_skip", 21)))
+        fundamentals = fundamentals.merge(momentum.rename_axis("ticker").reset_index(),
+                                          on="ticker", how="left")
     _save_fundamentals_snapshot(fundamentals, paths.get("fundamentals_dir"))
 
     merged = universe.merge(fundamentals, on="ticker", how="left")
@@ -62,21 +100,23 @@ def run_screen(config: dict[str, Any], limit: int | None = None) -> pd.DataFrame
     watchlist = scored.head(int(screening_cfg.get("watchlist_size", 60)))
 
     watchlist_path = Path(paths["watchlist"])
+    previous = pd.read_csv(watchlist_path) if watchlist_path.exists() else None
     watchlist_path.parent.mkdir(parents=True, exist_ok=True)
     columns = [c for c in WATCHLIST_COLUMNS if c in watchlist.columns]
     watchlist[columns].to_csv(watchlist_path, index=False)
     logger.info("ウォッチリストを保存しました: %s (%d 銘柄)", watchlist_path, len(watchlist))
 
     report_path = Path(paths["reports_dir"]) / "watchlist.md"
-    write_watchlist_report(watchlist, report_path, universe_size=len(universe))
+    write_watchlist_report(watchlist, report_path, universe_size=len(universe), previous=previous)
     logger.info("レポートを生成しました: %s", report_path)
     return watchlist
 
 
 def run_signals(config: dict[str, Any], notify: bool = True) -> list[dict[str, Any]]:
-    """第2段階: ウォッチリスト銘柄の買いシグナルを判定する。"""
+    """第2段階: ウォッチリスト銘柄の買いシグナルを判定し、台帳と成績表を更新する。"""
     signals_cfg = config["signals"]
     paths = config["paths"]
+    horizons = _horizons(config)
 
     watchlist_path = Path(paths["watchlist"])
     if not watchlist_path.exists():
@@ -87,32 +127,171 @@ def run_signals(config: dict[str, Any], notify: bool = True) -> list[dict[str, A
         logger.error("ウォッチリストが空です: %s", watchlist_path)
         return []
 
+    # 過去にシグナルを出した銘柄 (ウォッチリストから外れていても) の株価も取り、成績を追跡する
+    log_path = paths.get("signal_log")
+    log = load_signal_log(log_path)
+    tickers = list(dict.fromkeys(watchlist["ticker"].tolist() + log["ticker"].tolist()))
+
     prices = fetch_price_history(
-        watchlist["ticker"].tolist(),
+        tickers,
         period=str(signals_cfg.get("history_period", "2y")),
         cache_dir=paths.get("cache_dir"),
     )
     results = scan_watchlist(prices, watchlist, signals_cfg)
 
     reports_dir = Path(paths["reports_dir"])
-    dated_path = reports_dir / "signals" / f"{now_jst():%Y-%m-%d}.md"
-    write_signals_report(results, dated_path, watchlist_size=len(watchlist))
+    run_date = f"{now_jst():%Y-%m-%d}"
+    write_signals_report(results, reports_dir / "signals" / f"{run_date}.md",
+                         watchlist_size=len(watchlist))
     write_signals_report(results, reports_dir / "latest-signals.md",
                          watchlist_size=len(watchlist))
-    logger.info("レポートを生成しました: %s", dated_path)
+    logger.info("レポートを生成しました: %s", reports_dir / "latest-signals.md")
+
+    if log_path:
+        log = update_signal_log(log_path, results_to_log_rows(results, run_date))
+        evaluated = forward_returns(log, prices, horizons)
+        save_signal_log(log_path, evaluated)  # 確定した ret_N を台帳に書き戻す
+        entries = evaluated[evaluated["is_new"]]
+        summary = summarize_returns(entries, horizons, "signal")
+        write_performance_report(evaluated, summary, horizons, reports_dir / "performance.md")
+        logger.info("成績表を更新しました: %s", reports_dir / "performance.md")
 
     if results and notify:
-        send_slack(build_slack_message(results))
+        only_new = bool(signals_cfg.get("notify_only_new", True))
+        has_new = any(r.get("new_signals") for r in results)
+        if only_new and not has_new:
+            logger.info("新規シグナルが無いためSlack通知をスキップします (継続中 %d 銘柄)", len(results))
+        else:
+            send_slack(build_slack_message(results, only_new=only_new))
     return results
 
 
+def run_backtest(
+    config: dict[str, Any],
+    period: str | None = None,
+    universe: bool = False,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Phase 3: 本番と同じシグナルルールを過去データに当てて成績を集計する。"""
+    signals_cfg = config["signals"]
+    paths = config["paths"]
+    bt_cfg = config.get("backtest", {})
+    horizons = _horizons(config)
+    period = period or str(bt_cfg.get("history_period", "5y"))
+    gap = int(signals_cfg.get("renotify_after_days", 10))
+
+    if universe:
+        meta = load_universe(config)
+        scope = "全ユニバース"
+    else:
+        watchlist_path = Path(paths["watchlist"])
+        if not watchlist_path.exists():
+            raise FileNotFoundError(
+                f"ウォッチリストがありません: {watchlist_path} (先に `stock-screener screen` を実行)"
+            )
+        meta = pd.read_csv(watchlist_path)
+        scope = "ウォッチリスト"
+    if limit:
+        meta = meta.head(limit)
+
+    prices = fetch_price_history(meta["ticker"].tolist(), period=period,
+                                 cache_dir=paths.get("cache_dir"))
+    result = _run_backtest(prices, signals_cfg, horizons, gap, meta=meta)
+    report_path = Path(paths["reports_dir"]) / "backtest.md"
+    write_backtest_report(result, horizons, report_path, period=period, gap=gap,
+                          scope=scope, meta=meta)
+    logger.info("バックテストレポートを生成しました: %s", report_path)
+    return result
+
+
+def run_portfolio(config: dict[str, Any], period: str | None = None) -> dict[str, Any]:
+    """ポートフォリオ・バックテスト: 月次で上位N銘柄を保有する戦略を指数ETFと比較する。"""
+    paths = config["paths"]
+    pf_cfg = config.get("portfolio", {})
+    period = period or str(pf_cfg.get("history_period", "10y"))
+    benchmarks: dict[str, str] = dict(pf_cfg.get("benchmarks", {}))
+    if not benchmarks:
+        raise ValueError("config.yaml の portfolio.benchmarks が空です")
+
+    meta = load_universe(config)
+    tickers = meta["ticker"].tolist() + list(benchmarks.values())
+    prices = fetch_price_history(tickers, period=period, cache_dir=paths.get("cache_dir"))
+    results = _run_portfolio_backtest(prices, meta, benchmarks, pf_cfg)
+    report_path = Path(paths["reports_dir"]) / "portfolio-backtest.md"
+    write_portfolio_report(results, report_path, period=period, cfg=pf_cfg)
+    logger.info("ポートフォリオ・バックテストのレポートを生成しました: %s", report_path)
+    return results
+
+
+def run_model_portfolio(config: dict[str, Any], force_rebalance: bool = False) -> dict[str, Any]:
+    """ペーパー運用: 戦略ごとの保有を評価し、月が変わっていれば入れ替える。"""
+    paths = config["paths"]
+    pf_cfg = config.get("portfolio", {})
+    top_n = int(pf_cfg.get("top_n_per_market", 15))
+    cost_rate = float(pf_cfg.get("cost_rate", 0.002))
+    bench_tickers = list(dict(pf_cfg.get("benchmarks", {})).values())
+    state_dir = paths.get("model_portfolio_dir", "data/model_portfolio")
+    date = f"{now_jst():%Y-%m-%d}"
+
+    universe = load_universe(config)
+    state = load_state(state_dir)
+    held = state["holdings"]["ticker"].tolist() if not state["holdings"].empty else []
+    tickers = list(dict.fromkeys(universe["ticker"].tolist() + held + bench_tickers))
+    prices = fetch_price_history(tickers, period=str(config["signals"].get("history_period", "2y")),
+                                 cache_dir=paths.get("cache_dir"))
+
+    # モメンタム戦略の候補: ユニバース全体 (時価総額フィルタは最新の財務スナップショットで)
+    momentum = latest_momentum(prices, int(pf_cfg.get("momentum_lookback", 252)),
+                               int(pf_cfg.get("momentum_skip", 21)))
+    cand = universe.merge(momentum.rename_axis("ticker").reset_index(), on="ticker", how="left")
+    snapshot = _latest_fundamentals_snapshot(paths.get("fundamentals_dir"))
+    if snapshot is not None and "market_cap" in snapshot.columns:
+        cand = cand.merge(snapshot[["ticker", "market_cap"]], on="ticker", how="left")
+        cand = apply_market_cap_filter(cand)
+    targets = {"momentum": select_targets(cand, STRATEGIES["momentum"]["rank_col"], top_n)}
+
+    # 合成スコア戦略の候補: ウォッチリスト
+    watchlist_path = Path(paths["watchlist"])
+    if watchlist_path.exists():
+        wl = pd.read_csv(watchlist_path)
+        targets["composite"] = select_targets(wl, STRATEGIES["composite"]["rank_col"], top_n)
+    else:
+        logger.warning("ウォッチリストが無いため合成スコア戦略は見送ります")
+        targets["composite"] = pd.DataFrame(columns=["ticker", "name", "market", "score"])
+
+    state, summary = _run_model_portfolio(state, targets, prices, bench_tickers, date,
+                                          cost_rate, force_rebalance=force_rebalance)
+    save_state(state_dir, state)
+    report_path = Path(paths["reports_dir"]) / "model-portfolio.md"
+    write_model_portfolio_report(summary, report_path, date, STRATEGIES, top_n, bench_tickers, cost_rate)
+    logger.info("モデルポートフォリオを更新しました: %s", report_path)
+    return summary
+
+
+def _latest_fundamentals_snapshot(snapshot_dir: str | None) -> pd.DataFrame | None:
+    if not snapshot_dir:
+        return None
+    files = sorted(Path(snapshot_dir).glob("*.csv"))
+    if not files:
+        return None
+    return pd.read_csv(files[-1], dtype={"ticker": str})
+
+
+def _horizons(config: dict[str, Any]) -> list[int]:
+    raw = config.get("tracking", {}).get("horizons", DEFAULT_HORIZONS)
+    return [int(h) for h in raw]
+
+
 def _save_fundamentals_snapshot(df: pd.DataFrame, snapshot_dir: str | None) -> None:
-    """財務データのスナップショットを日付付きで保存する (後の分析・検証用)。"""
+    """財務データのスナップショットを日付付き CSV で保存する。
+
+    リポジトリにコミットして蓄積する (第1段階の選定ルールを後から過去時点の値で検証するため)。
+    """
     if not snapshot_dir:
         return
-    path = Path(snapshot_dir) / f"{now_jst():%Y-%m-%d}.parquet"
+    path = Path(snapshot_dir) / f"{now_jst():%Y-%m-%d}.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(path, index=False)
+    df.round(6).to_csv(path, index=False)
     logger.info("財務データのスナップショットを保存: %s", path)
 
 
@@ -132,9 +311,30 @@ def main(argv: list[str] | None = None) -> int:
                           help="対象銘柄数を制限 (動作確認用)")
 
     p_signals = subparsers.add_parser(
-        "signals", help="ウォッチリストの買いシグナルを判定してレポート生成 (日次)"
+        "signals", help="ウォッチリストの買いシグナルを判定し、台帳・成績表・レポートを更新 (日次)"
     )
     p_signals.add_argument("--no-notify", action="store_true", help="Slack通知を送らない")
+
+    p_bt = subparsers.add_parser(
+        "backtest", help="シグナルルールを過去データで検証して reports/backtest.md を生成"
+    )
+    p_bt.add_argument("--period", default=None,
+                      help="株価履歴の期間 (yfinance 形式。既定は config の backtest.history_period)")
+    p_bt.add_argument("--universe", action="store_true",
+                      help="ウォッチリストではなく全ユニバースを対象にする")
+    p_bt.add_argument("--limit", type=int, default=None, help="対象銘柄数を制限 (動作確認用)")
+
+    p_pf = subparsers.add_parser(
+        "portfolio", help="毎月上位N銘柄を保有した場合の成績を指数ETFと比較 → reports/portfolio-backtest.md"
+    )
+    p_pf.add_argument("--period", default=None,
+                      help="株価履歴の期間 (既定は config の portfolio.history_period)")
+
+    p_mp = subparsers.add_parser(
+        "model-portfolio",
+        help="ペーパー運用: 戦略ごとの保有を評価し月初に入れ替え → reports/model-portfolio.md (日次)",
+    )
+    p_mp.add_argument("--rebalance", action="store_true", help="月が変わっていなくても入れ替える")
 
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -150,6 +350,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     elif args.command == "signals":
         run_signals(config, notify=not args.no_notify)
+    elif args.command == "backtest":
+        run_backtest(config, period=args.period, universe=args.universe, limit=args.limit)
+    elif args.command == "portfolio":
+        run_portfolio(config, period=args.period)
+    elif args.command == "model-portfolio":
+        run_model_portfolio(config, force_rebalance=args.rebalance)
     return 0
 
 

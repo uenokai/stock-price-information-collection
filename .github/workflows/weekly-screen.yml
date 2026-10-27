@@ -1,6 +1,9 @@
-# 週次ファンダメンタル・スクリーニング
+# 週次ファンダメンタル・スクリーニング + バックテスト
 # 毎週土曜 07:00 JST (金曜 22:00 UTC) に全ユニバースをスクリーニングし、
 # ウォッチリストとレポートをリポジトリにコミットする。
+# 続けてシグナル別バックテスト (reports/backtest.md) とポートフォリオ・バックテスト
+# (reports/portfolio-backtest.md: 上位N銘柄の月次保有 vs 指数ETF) を更新する。
+# 財務指標のスナップショット (data/fundamentals/YYYY-MM-DD.csv) もコミットして蓄積する。
 name: Weekly Screening
 
 on:
@@ -18,11 +21,11 @@ concurrency:
 jobs:
   screen:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -33,15 +36,38 @@ jobs:
       - name: Run screening
         run: stock-screener screen
 
+      - name: Run signal backtest on the new watchlist
+        run: stock-screener backtest
+
+      - name: Run portfolio backtest (vs index ETF)
+        run: stock-screener portfolio
+
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
-          git add data/watchlist.csv reports/
+          # 先にコミットしてから pull --rebase する (未コミットの変更があると rebase が失敗するため)
+          git add data reports
           if git diff --cached --quiet; then
             echo "変更なし: コミットをスキップ"
-          else
-            git commit -m "chore: 週次スクリーニング結果を更新 ($(date +%Y-%m-%d))"
-            git push
+            exit 0
           fi
+          git commit -m "chore: 週次スクリーニング結果を更新 ($(date +%Y-%m-%d))"
+          for attempt in 1 2 3; do
+            if git pull --rebase && git push; then
+              exit 0
+            fi
+            echo "push 失敗 (試行 $attempt)。5秒後に再試行"
+            sleep 5
+          done
+          exit 1
+
+      - name: Notify failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$SLACK_WEBHOOK_URL" ] && { echo "SLACK_WEBHOOK_URL 未設定のため通知スキップ"; exit 0; }
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\": \":x: Weekly Screening が失敗しました: $RUN_URL\"}" "$SLACK_WEBHOOK_URL"

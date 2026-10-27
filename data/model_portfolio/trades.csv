@@ -1,0 +1,61 @@
+date,portfolio,ticker,name,market,side,price,reason
+2026-10-21,momentum,6752.T,パナソニックホールディングス,japan,buy,3977.0,rebalance
+2026-10-21,momentum,6981.T,村田製作所,japan,buy,6798.0,rebalance
+2026-10-21,momentum,6098.T,リクルートホールディングス,japan,buy,18775.0,rebalance
+2026-10-21,momentum,6857.T,アドバンテスト,japan,buy,34450.0,rebalance
+2026-10-21,momentum,5713.T,住友金属鉱山,japan,buy,8759.0,rebalance
+2026-10-21,momentum,5802.T,住友電気工業,japan,buy,2071.5,rebalance
+2026-10-21,momentum,6723.T,ルネサスエレクトロニクス,japan,buy,3017.0,rebalance
+2026-10-21,momentum,8411.T,みずほフィナンシャルグループ,japan,buy,8094.0,rebalance
+2026-10-21,momentum,8035.T,東京エレクトロン,japan,buy,10350.0,rebalance
+2026-10-21,momentum,8015.T,豊田通商,japan,buy,7539.0,rebalance
+2026-10-21,momentum,6971.T,京セラ,japan,buy,3656.0,rebalance
+2026-10-21,momentum,4385.T,メルカリ,japan,buy,3670.0,rebalance
+2026-10-21,momentum,6178.T,日本郵政,japan,buy,2446.5,rebalance
+2026-10-21,momentum,8316.T,三井住友フィナンシャルグループ,japan,buy,3274.0,rebalance
+2026-10-21,momentum,8750.T,第一生命ホールディングス,japan,buy,1872.0,rebalance
+2026-10-21,momentum,MU,Micron Technology,us,buy,911.1500244140624,rebalance
+2026-10-21,momentum,INTC,Intel,us,buy,92.87999725341795,rebalance
+2026-10-21,momentum,AMD,Advanced Micro Devices,us,buy,540.2849731445312,rebalance
+2026-10-21,momentum,LRCX,Lam Research,us,buy,263.7950134277344,rebalance
+2026-10-21,momentum,AMAT,Applied Materials,us,buy,403.739990234375,rebalance
+2026-10-21,momentum,MRK,Merck,us,buy,148.27000427246094,rebalance
+2026-10-21,momentum,TGT,Target,us,buy,155.05499267578125,rebalance
+2026-10-21,momentum,PANW,Palo Alto Networks,us,buy,340.1199951171875,rebalance
+2026-10-21,momentum,FCX,Freeport-McMoRan,us,buy,68.83000183105469,rebalance
+2026-10-21,momentum,KLAC,KLA,us,buy,162.16000366210938,rebalance
+2026-10-21,momentum,SLB,SLB,us,buy,49.685001373291016,rebalance
+2026-10-21,momentum,CSCO,Cisco Systems,us,buy,106.08000183105467,rebalance
+2026-10-21,momentum,ADI,Analog Devices,us,buy,399.8900146484375,rebalance
+2026-10-21,momentum,TXN,Texas Instruments,us,buy,281.57000732421875,rebalance
+2026-10-21,momentum,FDX,FedEx,us,buy,300.4100036621094,rebalance
+2026-10-21,composite,4503.T,アステラス製薬,japan,buy,2425.0,rebalance
+2026-10-21,composite,5713.T,住友金属鉱山,japan,buy,8759.0,rebalance
+2026-10-21,composite,9503.T,関西電力,japan,buy,2690.0,rebalance
+2026-10-21,composite,2914.T,日本たばこ産業,japan,buy,7491.0,rebalance
+2026-10-21,composite,8750.T,第一生命ホールディングス,japan,buy,1872.0,rebalance
+2026-10-21,composite,8411.T,みずほフィナンシャルグループ,japan,buy,8094.0,rebalance
+2026-10-21,composite,4578.T,大塚ホールディングス,japan,buy,12320.0,rebalance
+2026-10-21,composite,5802.T,住友電気工業,japan,buy,2071.5,rebalance
+2026-10-21,composite,4507.T,塩野義製薬,japan,buy,2939.0,rebalance
+2026-10-21,composite,2503.T,キリンホールディングス,japan,buy,2905.0,rebalance
+2026-10-21,composite,8591.T,オリックス,japan,buy,5851.0,rebalance
+2026-10-21,composite,6326.T,クボタ,japan,buy,2654.5,rebalance
+2026-10-21,composite,7269.T,スズキ,japan,buy,2089.0,rebalance
+2026-10-21,composite,4385.T,メルカリ,japan,buy,3670.0,rebalance
+2026-10-21,composite,6273.T,SMC,japan,buy,66440.0,rebalance
+2026-10-21,composite,MU,Micron Technology,us,buy,911.1500244140624,rebalance
+2026-10-21,composite,GOOGL,Alphabet,us,buy,341.5718078613281,rebalance
+2026-10-21,composite,BMY,Bristol-Myers Squibb,us,buy,61.39500045776367,rebalance
+2026-10-21,composite,NVDA,NVIDIA,us,buy,217.0198974609375,rebalance
+2026-10-21,composite,EOG,EOG Resources,us,buy,155.8946990966797,rebalance
+2026-10-21,composite,REGN,Regeneron Pharmaceuticals,us,buy,795.9600219726562,rebalance
+2026-10-21,composite,NEE,NextEra Energy,us,buy,78.99500274658203,rebalance
+2026-10-21,composite,AMZN,Amazon,us,buy,262.95001220703125,rebalance
+2026-10-21,composite,AMAT,Applied Materials,us,buy,403.739990234375,rebalance
+2026-10-21,composite,CAT,Caterpillar,us,buy,723.489990234375,rebalance
+2026-10-21,composite,TGT,Target,us,buy,155.05499267578125,rebalance
+2026-10-21,composite,ABNB,Airbnb,us,buy,176.14999389648438,rebalance
+2026-10-21,composite,LRCX,Lam Research,us,buy,263.7950134277344,rebalance
+2026-10-21,composite,LLY,Eli Lilly,us,buy,1301.9898681640625,rebalance
+2026-10-21,composite,VRTX,Vertex Pharmaceuticals,us,buy,512.0050048828125,rebalance
