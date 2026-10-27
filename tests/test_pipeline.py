@@ -106,7 +106,7 @@ def test_screen_then_signals_end_to_end(tmp_path, monkeypatch):
     assert all("breakout_52w" in r["signals"] for r in results)
 
     latest = (tmp_path / "reports" / "latest-signals.md").read_text(encoding="utf-8")
-    assert "52週高値ブレイク" in latest
+    assert "52週高値の更新" in latest
     assert "TST0.T" in latest
     dated_reports = list((tmp_path / "reports" / "signals").glob("*.md"))
     assert len(dated_reports) == 1

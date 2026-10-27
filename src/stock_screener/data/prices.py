@@ -33,7 +33,7 @@ def fetch_price_history(
     cache_dir: str | Path | None = None,
     max_age_hours: float = 20.0,
 ) -> dict[str, pd.DataFrame]:
-    """各ティッカーの日足OHLCVを返す。
+    """各銘柄コードの日足OHLCVを返す。
 
     Returns:
         {ticker: DataFrame(index=日付, columns=[open, high, low, close, volume])}
@@ -66,7 +66,7 @@ def fetch_price_history(
 
 
 def _split_by_ticker(raw: pd.DataFrame, tickers: list[str]) -> dict[str, pd.DataFrame]:
-    """yf.download の結果をティッカーごとの DataFrame に分解する。"""
+    """yf.download の結果を銘柄コードごとの DataFrame に分解する。"""
     result: dict[str, pd.DataFrame] = {}
     if raw is None or raw.empty:
         return result
@@ -116,7 +116,7 @@ def _remove_glitches(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 
 def _cache_path(cache_dir: str | Path, period: str) -> Path:
-    # 期間ごとに別ファイル (日次判定の 2y とバックテストの 5y が混ざらないように)
+    # 期間ごとに別ファイル (日次判定の 2y と過去検証の 5y が混ざらないように)
     return Path(cache_dir) / f"prices_{period}.parquet"
 
 

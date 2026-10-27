@@ -1,12 +1,12 @@
-"""テクニカル・タイミング判定 (第2段階)。
+"""値動きによる買い時の判定 (第2段階)。
 
-ウォッチリスト銘柄の日足に対して、中長期投資に適した買いシグナルを判定する。
-シグナルは「良い銘柄を高値掴みしない/勢いに乗る」ための補助であり、
-複数シグナルの同時成立を高信頼度として扱う。
+候補リスト銘柄の日足に対して、中長期投資に適した買いの合図を判定する。
+合図は「良い銘柄を高値掴みしない/勢いに乗る」ための補助であり、
+複数合図の同時成立を高信頼度として扱う。
 
 ルールは `compute_signal_frame` に一本化してある (全営業日分をベクトル計算)。
-日次判定 (`detect_signals`) はその最終行を、バックテストは全行を使うので、
-「本番で鳴るシグナル」と「バックテストで検証するシグナル」が必ず一致する。
+日次判定 (`detect_signals`) はその最終行を、過去検証は全行を使うので、
+「本番で鳴る合図」と「過去検証で検証する合図」が必ず一致する。
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ from .indicators import rolling_high, rsi, sma
 
 logger = logging.getLogger(__name__)
 
-# シグナル名 → レポート表示用ラベル
+# 合図名 → レポート表示用ラベル
 SIGNAL_LABELS = {
     "golden_cross": "ゴールデンクロス (50日/200日)",
-    "breakout_52w": "52週高値ブレイク",
-    "pullback": "押し目 (上昇トレンド中の調整)",
+    "breakout_52w": "52週高値の更新",
+    "pullback": "押し目 (上昇傾向中の調整)",
     "volume_surge": "出来高急増",
 }
 SIGNAL_NAMES = list(SIGNAL_LABELS)
@@ -40,7 +40,7 @@ INDICATOR_COLUMNS = ["close", "sma50", "sma200", "rsi", "volume_ratio",
 
 
 def compute_signal_frame(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
-    """全営業日についてシグナル成立の真偽と指標を計算する。
+    """全営業日について合図の成立の真偽と指標を計算する。
 
     Args:
         df: index=日付 (昇順), columns=[open, high, low, close, volume]
@@ -48,7 +48,7 @@ def compute_signal_frame(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFra
 
     Returns:
         index=日付, columns=SIGNAL_NAMES (bool) + INDICATOR_COLUMNS。
-        指標が未確定の日 (valid=False) ではシグナルは全て False。
+        指標が未確定の日 (valid=False) では合図は全て False。
         履歴が MIN_HISTORY_DAYS 未満なら空の DataFrame。
     """
     if df is None or len(df) < MIN_HISTORY_DAYS:
@@ -73,11 +73,11 @@ def compute_signal_frame(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFra
     cross_up = (sma50 > sma200) & (sma50.shift(1) <= sma200.shift(1))
     golden_cross = cross_up.astype(float).rolling(lookback, min_periods=1).max() > 0
 
-    # 52週高値ブレイク: 出来高を伴う新高値更新
+    # 52週高値の更新: 出来高を伴う新高値更新
     volume_mult = float(params.get("breakout_volume_mult", 1.5))
     breakout = (close >= high_52w) & (volume_ratio >= volume_mult)
 
-    # 押し目: 上昇トレンドを維持したままRSIが調整圏まで低下
+    # 押し目: 上昇傾向を維持したままRSIが調整圏まで低下
     rsi_min = float(params.get("pullback_rsi_min", 30))
     rsi_max = float(params.get("pullback_rsi_max", 45))
     pullback = uptrend & (rsi14 >= rsi_min) & (rsi14 <= rsi_max)
@@ -108,9 +108,9 @@ def compute_signal_frame(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFra
 
 
 def first_of_episode(flag: pd.Series, gap: int) -> pd.Series:
-    """「新規」シグナルの判定: 成立日のうち、直前 gap 営業日に同じシグナルが無かった日だけ True。
+    """「新規」合図の判定: 成立日のうち、直前 gap 営業日に同じ合図が無かった日だけ True。
 
-    押し目のように連日成立するシグナルを1回のエントリーとして数えるために使う。
+    押し目のように連日成立する合図を1回の買い付けとして数えるために使う。
     gap=0 なら毎日を新規扱い。
     """
     flag = flag.fillna(False).astype(bool)
@@ -123,10 +123,10 @@ def first_of_episode(flag: pd.Series, gap: int) -> pd.Series:
 def detect_signals(
     df: pd.DataFrame, params: dict[str, Any]
 ) -> tuple[list[str], dict[str, float]]:
-    """1銘柄の日足OHLCVから、当日成立している買いシグナルを判定する。
+    """1銘柄の日足OHLCVから、当日成立している買いの合図を判定する。
 
     Returns:
-        (成立シグナル名のリスト, 判定時点の指標スナップショット)
+        (成立合図名のリスト, 判定時点の指標記録)
         履歴不足・指標未確定の場合は ([], {})
     """
     frame = compute_signal_frame(df, params)
@@ -150,9 +150,9 @@ def detect_signals(
 def classify_new_signals(
     df: pd.DataFrame, signals: list[str], params: dict[str, Any]
 ) -> dict[str, bool]:
-    """当日成立したシグナルそれぞれについて、新規 (True) か継続 (False) かを返す。
+    """当日成立した合図それぞれについて、新規 (True) か継続 (False) かを返す。
 
-    新規 = 同じシグナルが直前 `renotify_after_days` 営業日に成立していなかった。
+    新規 = 同じ合図が直前 `renotify_after_days` 営業日に成立していなかった。
     """
     gap = int(params.get("renotify_after_days", 10))
     if not signals:
@@ -168,10 +168,10 @@ def scan_watchlist(
     watchlist: pd.DataFrame,
     params: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """ウォッチリスト全銘柄のシグナルを判定し、成立した銘柄だけ返す。
+    """候補リスト全銘柄の合図を判定し、成立した銘柄だけ返す。
 
-    各結果には signals (成立シグナル名), new_signals (うち新規のもの), metrics,
-    score (ファンダスコア、あれば), bar_date (判定に使った最終足の日付) を含む。
+    各結果には signals (成立合図名), new_signals (うち新規のもの), metrics,
+    score (総合点、あれば), bar_date (判定に使った最終足の日付) を含む。
     """
     results = []
     skipped = 0
@@ -197,7 +197,7 @@ def scan_watchlist(
     if skipped:
         logger.warning("株価データが取得できずスキップした銘柄: %d 件", skipped)
     n_new = sum(1 for r in results if r["new_signals"])
-    logger.info("シグナル判定完了: %d 銘柄中 %d 銘柄でシグナル成立 (うち新規 %d 銘柄)",
+    logger.info("合図判定完了: %d 銘柄中 %d 銘柄で合図の成立 (うち新規 %d 銘柄)",
                 len(watchlist), len(results), n_new)
     return results
 

@@ -1,10 +1,10 @@
-"""モデルポートフォリオ (ペーパー運用)。
+"""仮の運用。
 
-バックテストで良かった戦略を「今なら何を持つか」の具体的な銘柄リストに落とし、
+過去検証で良かった戦略を「今なら何を持つか」の具体的な銘柄リストに落とし、
 その後の評価額を指数ETFと並べて毎日記録する。注文は出さない。
 
 - 戦略ごとに市場別 上位N銘柄を等金額で保有し、月初 (その月の最初の実行日) に入れ替える
-  (ポートフォリオ・バックテストと同じルール。入れ替えコストも同じ式で控除)
+  (保有銘柄の過去検証と同じルール。入れ替え手数料も同じ式で控除)
 - 状態は data/model_portfolio/ の CSV (holdings / trades / nav) に持ち、リポジトリにコミットする
 - 過去検証 (backtest) では測れない「その後 (アウトオブサンプル) の成績」がここに溜まる
 """
@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 
 STRATEGIES = {
     "momentum": {
-        "label": "モメンタム戦略",
-        "description": "各市場で 12-1ヶ月モメンタム上位N銘柄を等金額保有。バックテストで指数超過を確認済み",
+        "label": "上昇率戦略",
+        "description": "各市場で株価上昇率が上位のN銘柄を等金額保有。過去検証で指数を上回ったことを確認済み",
         "rank_col": "momentum_12_1",
     },
     "composite": {
-        "label": "合成スコア戦略",
-        "description": "各市場でウォッチリスト (財務指標+モメンタムの合成スコア) 上位N銘柄を等金額保有。財務指標の効果は未検証",
+        "label": "総合点戦略",
+        "description": "各市場で候補リスト (財務指標+株価上昇率の総合点) 上位N銘柄を等金額保有。財務指標の効果は未検証",
         "rank_col": "score",
     },
 }
@@ -68,7 +68,7 @@ def save_state(state_dir: str | Path, state: dict[str, pd.DataFrame]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 選定・評価・リバランス
+# 選定・評価・入れ替え
 # ---------------------------------------------------------------------------
 
 def select_targets(candidates: pd.DataFrame, rank_col: str, top_n: int) -> pd.DataFrame:
@@ -118,10 +118,10 @@ def rebalance(
     portfolio: str,
     cost_rate: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame, float]:
-    """等金額に組み直す。戻り値: (新しい保有, 売買記録, コスト控除後の評価額)。
+    """等金額に組み直す。戻り値: (新しい保有, 売買記録, 手数料控除後の評価額)。
 
     価格が取れない対象銘柄は見送る (その分は他の銘柄に等分される)。
-    継続保有の銘柄は取得日・取得価格を引き継ぐ (ウェイトだけ等金額に戻す)。
+    継続保有の銘柄は取得日・取得価格を引き継ぐ (比率だけ等金額に戻す)。
     """
     priced = []
     for row in targets.itertuples(index=False):
@@ -155,7 +155,7 @@ def rebalance(
         rows.append([portfolio, ticker, name, market, units, entry_date, entry_price])
     new_holdings = pd.DataFrame(rows, columns=HOLDINGS_COLUMNS)
     trades_df = pd.DataFrame(trades, columns=TRADES_COLUMNS)
-    logger.info("%s: リバランス %s (保有 %d → %d 銘柄, 入替率 %.0f%%, 売買 %d 件)",
+    logger.info("%s: 入れ替え %s (保有 %d → %d 銘柄, 入替率 %.0f%%, 売買 %d 件)",
                 portfolio, date, len(prev), len(new), turnover * 100, len(trades_df))
     return new_holdings, trades_df, nav_after
 
@@ -173,7 +173,7 @@ def benchmark_nav(prices: dict[str, pd.DataFrame], bench_tickers: list[str],
 
 
 def should_rebalance(last_rebalance: str | None, date: str) -> bool:
-    """月が変わっていればリバランス (その月の最初の実行日に行う)。"""
+    """月が変わっていれば入れ替え (その月の最初の実行日に行う)。"""
     if not last_rebalance or (isinstance(last_rebalance, float) and np.isnan(last_rebalance)):
         return True
     return str(last_rebalance)[:7] != date[:7]
@@ -188,7 +188,7 @@ def run_model_portfolio(
     cost_rate: float,
     force_rebalance: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
-    """全戦略について評価 (+必要ならリバランス) し、状態と要約を返す。同じ日の再実行は上書き。"""
+    """全戦略について評価 (+必要なら入れ替え) し、状態と要約を返す。同じ日の再実行は上書き。"""
     holdings_all, trades_all, nav_all = state["holdings"], state["trades"], state["nav"]
     summary: dict[str, Any] = {}
 
@@ -209,7 +209,7 @@ def run_model_portfolio(
             h, trades_today, nav_value = rebalance(h, nav_value, targets, prices, date, name, cost_rate)
             last_rb = date
         elif do_rb:
-            logger.warning("%s: 選定対象が空のためリバランスを見送り", name)
+            logger.warning("%s: 選定対象が空のため入れ替えを見送り", name)
 
         bench = benchmark_nav(prices, bench_tickers, inception, date)
         holdings_all = pd.concat([holdings_all[holdings_all["portfolio"] != name], h], ignore_index=True)
