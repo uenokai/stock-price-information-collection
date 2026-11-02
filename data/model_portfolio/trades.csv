@@ -59,3 +59,19 @@ date,portfolio,ticker,name,market,side,price,reason
 2026-10-21,composite,LRCX,Lam Research,us,buy,263.7950134277344,rebalance
 2026-10-21,composite,LLY,Eli Lilly,us,buy,1301.9898681640625,rebalance
 2026-10-21,composite,VRTX,Vertex Pharmaceuticals,us,buy,512.0050048828125,rebalance
+2026-11-02,momentum,8015.T,豊田通商,japan,sell,6623.0,rebalance
+2026-11-02,momentum,4385.T,メルカリ,japan,sell,3513.0,rebalance
+2026-11-02,momentum,SLB,SLB,us,sell,53.7400016784668,rebalance
+2026-11-02,momentum,FDX,FedEx,us,sell,313.2799987792969,rebalance
+2026-11-02,momentum,7735.T,SCREENホールディングス,japan,buy,9287.0,rebalance
+2026-11-02,momentum,6920.T,レーザーテック,japan,buy,39410.0,rebalance
+2026-11-02,momentum,BMY,Bristol-Myers Squibb,us,buy,62.47999954223633,rebalance
+2026-11-02,momentum,COP,ConocoPhillips,us,buy,154.02999877929688,rebalance
+2026-11-02,composite,4385.T,メルカリ,japan,sell,3513.0,rebalance
+2026-11-02,composite,BMY,Bristol-Myers Squibb,us,sell,62.47999954223633,rebalance
+2026-11-02,composite,REGN,Regeneron Pharmaceuticals,us,sell,927.8900146484375,rebalance
+2026-11-02,composite,LLY,Eli Lilly,us,sell,1417.5400390625,rebalance
+2026-11-02,composite,6857.T,アドバンテスト,japan,buy,35350.0,rebalance
+2026-11-02,composite,MO,Altria,us,buy,78.02999877929688,rebalance
+2026-11-02,composite,COP,ConocoPhillips,us,buy,154.02999877929688,rebalance
+2026-11-02,composite,AMGN,Amgen,us,buy,466.010009765625,rebalance
